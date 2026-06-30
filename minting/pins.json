@@ -1,0 +1,75 @@
+{
+  "_comment": "Pinned artifacts for the commec-in-a-box minting pipeline. Bump deliberately to upgrade a component; build scripts verify downloads against these hashes at fetch time. Researched 2026-06-22.",
+
+  "debian_cloud_image": {
+    "_comment": "Build base: Debian 'generic' qcow2 (cloud-init capable, UEFI+BIOS, broader hardware support than 'genericcloud' - chosen because the target is bare metal booting UEFI). We additionally install linux-image-amd64 (generic kernel) + grub-efi during provisioning for full ThinkCentre hardware (amdgpu, NIC).",
+    "version": "13 (trixie)",
+    "build": "20260615-2510",
+    "file": "debian-13-generic-amd64-20260615-2510.qcow2",
+    "url": "https://cloud.debian.org/images/cloud/trixie/20260615-2510/debian-13-generic-amd64-20260615-2510.qcow2",
+    "sha512": "e6ec0864d0b9c32ee60669cfe189e06baaaba26921ec0e8aeba6815a664275f13ef39b3a175af131e7d32889abd2e07f72c0c53893cb3b33d422f7b2a6834866"
+  },
+
+  "miniconda": {
+    "version": "py312_26.3.2-2",
+    "file": "Miniconda3-py312_26.3.2-2-Linux-x86_64.sh",
+    "url": "https://repo.anaconda.com/miniconda/Miniconda3-py312_26.3.2-2-Linux-x86_64.sh",
+    "sha256": "32673413a39a21ae3997c9b38236e9df15c9fcef930b510487c64fe259e03f95"
+  },
+
+  "commec": {
+    "_comment": "Bioconda package. A full conda lockfile is generated into packer/commec.lock at build time for true reproducibility (pinning the version alone does not lock the solve).",
+    "version": "1.0.5",
+    "channels": ["conda-forge", "bioconda"],
+    "install": "conda install -c conda-forge -c bioconda commec=1.0.5",
+    "python": ">=3.10"
+  },
+
+  "commec_small_dbs": {
+    "_comment": "Mandatory biorisk + low_concern DBs (this release renamed 'benign' -> 'low_concern', matching the installed screen-default-config.yaml). Unzips into <db>/biorisk and <db>/low_concern.",
+    "version": "v1.1.0",
+    "file": "commec-dbs.zip",
+    "size_bytes": 313230076,
+    "url": "https://github.com/ibbis-bio/commec-databases/releases/download/v1.1.0/commec-dbs.zip",
+    "sha256": "FILL_ON_FIRST_FETCH"
+  },
+
+  "commec_main_dbs": {
+    "_comment": "Large BLAST DBs staged from the TRANSFER USB stick; working copies live on the COMMEC external at /mnt/commec/dbs-staging. ~298 GB decompressed combined. Decompress with 'zstd -d --long=31' (large window).",
+    "nr_blast": {
+      "archive": "nr.tar-001.zst",
+      "kind": "BLAST protein (nr.NN.p*)",
+      "extract_to": "nr_blast/",
+      "size_bytes": 47570880256,
+      "sha256": "b655e3d99d6241b9bbde367d1bb54471bca960ffa827a724813ec3a9fb87a18a"
+    },
+    "core_nt_blast": {
+      "archive": "core_nt.tar-002.zst",
+      "kind": "BLAST nucleotide (core_nt.NN.n*)",
+      "extract_to": "nt_blast/",
+      "size_bytes": 34378467903,
+      "sha256": "a3e984010714efa1a1792380ed6a8b512cb4242979259f309a81ae8ab3098595"
+    }
+  },
+
+  "taxonomy": {
+    "_comment": "NCBI taxdump is a moving target (not content-addressable); commec setup pulls it live. Left UNPINNED on purpose - revisit if reproducibility of taxonomy is required.",
+    "url": "ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz",
+    "sha256": "UNPINNED"
+  },
+
+  "packer": {
+    "version": "1.15.4",
+    "file": "packer_1.15.4_linux_amd64.zip",
+    "url": "https://releases.hashicorp.com/packer/1.15.4/packer_1.15.4_linux_amd64.zip",
+    "sha256": "15f97a6a99645c7d5308c609973b5280837b38e112beac413ccbce80da927cf1"
+  },
+
+  "clonezilla": {
+    "_comment": "Deployment-stick wrapper (Clonezilla Live, Debian-based). SourceForge gates direct downloads behind an HTML meta-refresh; fetch from a *.dl.sourceforge.net mirror host (e.g. master.dl.sourceforge.net/project/clonezilla/...?viasf=1). sha256 computed locally.",
+    "version": "3.3.2-31",
+    "file": "clonezilla-live-3.3.2-31-amd64.iso",
+    "url": "https://master.dl.sourceforge.net/project/clonezilla/clonezilla_live_stable/3.3.2-31/clonezilla-live-3.3.2-31-amd64.iso?viasf=1",
+    "sha256": "a871b9ff25c965405d8ac15e4d23ee001632b3688ba43dbea08a62f050d06edb"
+  }
+}

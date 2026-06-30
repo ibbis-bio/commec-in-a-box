@@ -1,0 +1,31 @@
+#cloud-config
+# Build-time seed for the Packer VM. build.sh substitutes @@SSH_PUBKEY@@ and
+# writes the rendered file to cloud-init/_build/user-data (cidata volume).
+# This account + key exist ONLY to let Packer provision over SSH; 99-cleanup.sh
+# strips the build key and tightens sudo before the master image is finalized.
+hostname: commec-box
+manage_etc_hosts: true
+
+users:
+  - name: commec-user
+    gecos: Commec Operator
+    shell: /bin/bash
+    groups: [sudo]
+    lock_passwd: true
+    # SETENV so Packer can pass build env vars (BIORISK_URL etc.) through sudo -E.
+    # This is build-time only; 99-cleanup replaces it with a password-required rule.
+    sudo: "ALL=(ALL) NOPASSWD:SETENV: ALL"
+    ssh_authorized_keys:
+      - "@@SSH_PUBKEY@@"
+
+ssh_pwauth: false
+
+# Grow the root fs to the (resized) build disk so there is room to stage ~82 GB.
+growpart:
+  mode: auto
+  devices: ["/"]
+resize_rootfs: true
+
+# Keep first boot quick; provisioning does the heavy lifting.
+package_update: false
+package_upgrade: false

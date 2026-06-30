@@ -1,0 +1,23 @@
+minting.plan
+
+# Build artifacts and large downloads (kept out of git; staged on the COMMEC external)
+downloads/
+output/
+*.qcow2
+*.raw
+*.iso
+*.zst
+*.tar
+packer_cache/
+.packer.d/
+*.log
+
+# build-only secrets + generated seed (keep commec.lock, which IS committed)
+packer/.secrets/
+packer/cloud-init/_build/
+crash.log
+
+# wrap/ working dir + deployment artifacts
+_work/
+wrap/_work/
+*.img

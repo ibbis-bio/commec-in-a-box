@@ -1,0 +1,15 @@
+[Unit]
+Description=Commec first-boot setup (secure accounts, grow disk, unpack databases)
+After=local-fs.target
+ConditionPathExists=!/var/lib/commec/firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/commec-firstboot.sh
+RemainAfterExit=no
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
