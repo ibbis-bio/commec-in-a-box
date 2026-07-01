@@ -47,11 +47,12 @@ minting/
 
 1. **Build** (`packer/`): boot Debian cloud image, provision conda+commec, fetch
    small DBs, stage compressed main DBs into the image (NOT decompressed -> keeps
-   the master small enough for the 128 GB stick). Output: qcow2 master.
+   the master small enough for the deployment stick). Output: qcow2 master.
 2. **First boot** (`firstboot/`): force password, lock root, grow partition to fill
    the real 512 GB disk, then stream-decompress the DBs, set the done-flag, disable.
 3. **Every boot** (`everyboot/`): placeholder terminal (future commec-gui).
-4. **Wrap** (`wrap/`): Clonezilla unattended restore image -> bootable 128 GB stick.
+4. **Wrap** (`wrap/`): Clonezilla unattended restore image -> bootable deployment stick
+   (nominal 128 GB media; the disk image is sized ~90G to fit real "128 GB" sticks).
 5. **Test**: VM (qemu, blank 512 GB disk) then metal (ThinkCentre M75q Gen 2).
 
 ## Host (mintbox) prerequisites

@@ -24,7 +24,7 @@ test-restore.sh restore the image onto a blank disk (VM validation of the restor
 | `IMAGE_NAME` | `commec-v1` | Clonezilla image name |
 | `CZ_ISO` | from `pins.json` (fetched+verified) | Clonezilla Live ISO |
 | `STICK_IMG` | `$WORK_DIR/commec-deploy-stick.img` | output deployment image |
-| `STICK_SIZE` | `128G` | deployment stick size |
+| `STICK_SIZE` | `90G` | deployment stick disk-image size (must exceed the ~85G baked payload; keep well under nominal media, e.g. a "128 GB" stick is ~125.8 GB actual) |
 | `QEMU_ACCEL` | `kvm` | set `tcg` only for KVM-less CI (very slow) |
 | `QEMU_MEM_MB` / `QEMU_SMP` | `4096` / `4` | guest resources |
 

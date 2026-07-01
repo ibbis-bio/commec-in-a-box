@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
 # Phase 4b: bake Clonezilla Live + the saved image + an unattended-restore boot entry
-# into a SINGLE bootable disk image = the deployment stick. dd it to a >=128 GB USB.
+# into a SINGLE bootable disk image = the deployment stick. dd it to a USB at least as
+# large as STICK_SIZE (a nominal 128 GB stick is ~125.8 GB actual, so STICK_SIZE must
+# stay well under that).
 #
 # Layout: GPT, one FAT32 ESP partition holding the Clonezilla live files, the image in
 # /home/partimag/<IMAGE_NAME>, and a custom restore script. UEFI boots /EFI/boot/bootx64.efi
 # -> grub -> our default menuentry runs the restore script. (Target box boots UEFI.)
 #
 # Usage:  ./build-stick.sh        (CZ_REPO_IMG must contain /partimag/<IMAGE_NAME>)
-# Env: STICK_IMG (default $WORK_DIR/commec-deploy-stick.img), STICK_SIZE (default 128G),
+# Env: STICK_IMG (default $WORK_DIR/commec-deploy-stick.img), STICK_SIZE (default 90G),
 #      BOOT_TIMEOUT secs (default 10).
 #
 # STATUS: authored from the proven save/restore params but NOT yet test-booted end to end.
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 STICK_IMG="${STICK_IMG:-$WORK_DIR/commec-deploy-stick.img}"
-STICK_SIZE="${STICK_SIZE:-128G}"
+# Size the disk image just above the baked payload (~85G: the partclone image + Clonezilla
+# Live) so it fits generic "128 GB" media (~125.8 GB actual) with margin. A 128G image is
+# 137 GB and will NOT fit such sticks. Bump this if the databases grow past the headroom.
+STICK_SIZE="${STICK_SIZE:-90G}"
 BOOT_TIMEOUT="${BOOT_TIMEOUT:-10}"
 [ -f "$CZ_REPO_IMG" ] || die "CZ_REPO_IMG not found (run save.sh first): $CZ_REPO_IMG"
 ensure_clonezilla_iso
@@ -84,5 +89,5 @@ sudo cp "$GRUBCFG" "$GRUBCFG.orig"
 
 sudo sync
 log "deployment stick image ready: $STICK_IMG"
-log "  dd to a >=128 GB USB:  sudo dd if=$STICK_IMG of=/dev/sdX bs=4M status=progress oflag=direct"
+log "  dd to a nominal 128 GB (or larger) USB:  sudo dd if=$STICK_IMG of=/dev/sdX bs=4M status=progress oflag=direct"
 log "  or test in a VM:        see wrap/README.md"
