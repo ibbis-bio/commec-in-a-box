@@ -14,22 +14,22 @@ $CONDA config --system --set channel_priority strict
 $CONDA config --system --remove channels defaults 2>/dev/null || true
 $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
 $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
-$CONDA create -y -n commec --override-channels -c conda-forge -c bioconda "commec=${COMMEC_VERSION}"
+$CONDA create -y -n commec-env --override-channels -c conda-forge -c bioconda "commec=${COMMEC_VERSION}"
 
 # Explicit lockfile (exact package URLs) for reproducibility; pulled back by Packer
 # to be committed alongside pins.json.
 mkdir -p /opt/commec
-$CONDA list -n commec --explicit > /opt/commec/commec.lock
+$CONDA list -n commec-env --explicit > /opt/commec/commec.lock
 
 # Sanity: commec resolves and reports its version.
-/opt/miniconda/envs/commec/bin/commec --version || true
+/opt/miniconda/envs/commec-env/bin/commec --version || true
 
 # Auto-activate the env for commec-user (and root, for firstboot convenience).
 ACTIVATE='
 # commec env
 if [ -f /opt/miniconda/etc/profile.d/conda.sh ]; then
   . /opt/miniconda/etc/profile.d/conda.sh
-  conda activate commec
+  conda activate commec-env
 fi'
 for home in /home/commec-user /root; do
   if [ -d "$home" ]; then

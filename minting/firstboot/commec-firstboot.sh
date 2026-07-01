@@ -54,7 +54,7 @@ resize2fs "$ROOT_SRC" || echo "WARN: resize2fs failed"
 
 # --- 3. decompress staged DBs into ~commec-user/commec-dbs ---
 echo "[3/3] unpacking databases (this takes a while)"
-declare -A MAP=( ["nr.tar-001.zst"]="nr_blast" ["core_nt.tar-002.zst"]="nt_blast" )
+declare -A MAP=( ["nr.tar.zst"]="nr_blast" ["core_nt.tar.zst"]="nt_blast" )
 for f in "${!MAP[@]}"; do
   sub="${MAP[$f]}"
   src="$STAGING/$f"

@@ -14,7 +14,7 @@ cat > /tmp/run-commec-setup.sh <<'INNER'
 set -euo pipefail
 cd "$HOME"
 source /opt/miniconda/etc/profile.d/conda.sh
-conda activate commec
+conda activate commec-env
 # commec setup needs wget + update_blastdb.pl on PATH (the latter ships with blast in the env).
 command -v wget >/dev/null
 command -v update_blastdb.pl >/dev/null
@@ -36,7 +36,7 @@ rm -f /tmp/run-commec-setup.sh
 
 # Patch the installed package default config: set base_paths.default to the absolute
 # DB dir (with trailing slash, since paths are "{default}nr_blast/nr" etc.).
-/opt/miniconda/envs/commec/bin/python - "$DBDIR" <<'PY'
+/opt/miniconda/envs/commec-env/bin/python - "$DBDIR" <<'PY'
 import sys, pathlib, importlib.resources, yaml
 dbdir = sys.argv[1].rstrip("/") + "/"
 p = pathlib.Path(str(importlib.resources.files("commec").joinpath("screen-default-config.yaml")))

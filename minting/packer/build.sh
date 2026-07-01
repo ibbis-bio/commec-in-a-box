@@ -5,7 +5,8 @@
 #   3. generate a build-only SSH key + render the cloud-init seed
 #   4. packer init + build (under the kvm group) -> $OUTPUT_DIR/commec-box.qcow2
 #
-# Re-runs itself inside the kvm group if needed. Requires sudo for the loop-mount only.
+# Uses /dev/kvm directly (kvm group membership OR an ACL grant); builds the DB disk
+# with mkfs.ext4 -d, so no root/sudo is required on the host.
 set -euo pipefail
 
 # sbin tools (mkfs.ext4, blkid, ...) aren't on a non-root PATH by default.
@@ -14,7 +15,7 @@ export PATH="/usr/sbin:/sbin:$PATH"
 # Re-exec within the kvm group so qemu can use /dev/kvm (use an absolute path - sg
 # starts a fresh shell that may not share this cwd).
 SELF=$(readlink -f "$0")
-if ! id -nG | grep -qw kvm; then
+if ! id -nG | grep -qw kvm && ! { [ -r /dev/kvm ] && [ -w /dev/kvm ]; }; then
   exec sg kvm -c "exec '$SELF' $*"
 fi
 
@@ -72,17 +73,15 @@ if [ -n "${DB_BASE_URL:-}" ]; then
 fi
 
 echo "== 2. DB disk =="
-if [ -f "$DB_DISK" ] && [ "$(sudo blkid -p -s LABEL -o value "$DB_DISK" 2>/dev/null)" = "COMMEC_DBSRC" ]; then
+if [ -f "$DB_DISK" ] && [ "$(blkid -s LABEL -o value "$DB_DISK" 2>/dev/null)" = "COMMEC_DBSRC" ]; then
   echo "reusing existing $DB_DISK"
 else
-  echo "building $DB_DISK from $STAGING/*.zst"
+  echo "building $DB_DISK from $STAGING/*.zst (no-sudo: mkfs.ext4 -d)"
   rm -f "$DB_DISK"
   truncate -s 90G "$DB_DISK"
-  mkfs.ext4 -q -F -L COMMEC_DBSRC "$DB_DISK"
-  m=$(mktemp -d)
-  sudo mount -o loop "$DB_DISK" "$m"
-  sudo cp -v "$STAGING"/*.zst "$m"/
-  sudo umount "$m"; rmdir "$m"
+  # Embed the .zst tarballs at mkfs time (-d <dir>), avoiding a root-only loop mount.
+  # STAGING holds exactly the .zst (+ SHA256SUMS); all get copied into the fs image.
+  mkfs.ext4 -q -F -L COMMEC_DBSRC -d "$STAGING" "$DB_DISK"
 fi
 
 echo "== 3. ssh key + cloud-init seed =="

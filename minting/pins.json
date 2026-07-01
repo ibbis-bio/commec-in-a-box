@@ -37,14 +37,14 @@
   "commec_main_dbs": {
     "_comment": "Large BLAST DBs staged from the TRANSFER USB stick; working copies live on the COMMEC external at /mnt/commec/dbs-staging. ~298 GB decompressed combined. Decompress with 'zstd -d --long=31' (large window).",
     "nr_blast": {
-      "archive": "nr.tar-001.zst",
+      "archive": "nr.tar.zst",
       "kind": "BLAST protein (nr.NN.p*)",
       "extract_to": "nr_blast/",
       "size_bytes": 47570880256,
       "sha256": "b655e3d99d6241b9bbde367d1bb54471bca960ffa827a724813ec3a9fb87a18a"
     },
     "core_nt_blast": {
-      "archive": "core_nt.tar-002.zst",
+      "archive": "core_nt.tar.zst",
       "kind": "BLAST nucleotide (core_nt.NN.n*)",
       "extract_to": "nt_blast/",
       "size_bytes": 34378467903,
