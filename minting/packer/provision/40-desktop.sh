@@ -6,11 +6,27 @@ export DEBIAN_FRONTEND=noninteractive
 
 USER_HOME=/home/commec-user
 
+# The target box (ThinkCentre M75q) has an AMD Radeon APU, and the Debian genericcloud base
+# ships no GPU microcode. Without it amdgpu can't initialise the APU -> no DRM device -> Xorg
+# finds no screens -> lightdm never starts a session and the box drops to a text login. Enable
+# Debian's non-free-firmware component so the AMD (and Intel wifi) firmware is installable.
+SRC=/etc/apt/sources.list.d/debian.sources
+if [ -f "$SRC" ]; then
+  grep -q non-free-firmware "$SRC" || sed -i '/^Components:/ s/$/ non-free-firmware/' "$SRC"
+else
+  grep -q non-free-firmware /etc/apt/sources.list || sed -i 's/\(^deb\b.*\bmain\b\)/\1 non-free-firmware/' /etc/apt/sources.list
+fi
+
+# Persistent journal so kernel/service logs survive a reboot - volatile logs cost us a
+# painful blind debug of exactly this issue on a deployed box.
+install -d -m 2755 /var/log/journal
+
 apt-get update
 apt-get install -y --no-install-recommends \
   xorg xfce4 xfce4-goodies lightdm \
   conky-all x11-xserver-utils xfconf dbus-x11 \
-  network-manager-gnome
+  network-manager-gnome \
+  firmware-amd-graphics firmware-iwlwifi firmware-misc-nonfree
 
 # No auto-lock / no locker (xfce4-goodies may pull these in).
 apt-get purge -y light-locker xfce4-screensaver 2>/dev/null || true

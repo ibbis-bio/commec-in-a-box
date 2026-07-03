@@ -26,5 +26,16 @@ rm -f /etc/ssh/ssh_host_*
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
+# Bake the essential static device nodes into the image. The genericcloud base ships an EMPTY
+# /dev and relies on devtmpfs at boot, leaving the image one lost mountpoint away from an
+# unbootable "Attempted to kill init" panic (the initramfs init-handoff opens /root/dev/console).
+# A bind-mount of / exposes the underlying on-disk /dev (the live /dev here is devtmpfs), so
+# these nodes land in the image itself.
+mount --bind / /mnt
+mkdir -p /mnt/dev
+[ -e /mnt/dev/console ] || mknod -m 600 /mnt/dev/console c 5 1
+[ -e /mnt/dev/null ]    || mknod -m 666 /mnt/dev/null    c 1 3
+umount /mnt
+
 sync
 echo "99-cleanup done"

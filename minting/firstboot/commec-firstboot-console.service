@@ -1,0 +1,23 @@
+[Unit]
+Description=Commec first-boot progress notice on the console
+# Show the notice instead of a login prompt while the DBs unpack. Owns tty1 by conflicting
+# with its getty; exits when first boot finishes.
+After=local-fs.target
+Before=getty@tty1.service
+Conflicts=getty@tty1.service
+ConditionPathExists=!/var/lib/commec/firstboot.done
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/commec-firstboot-wait-console.sh
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -61,14 +61,58 @@ sudo cp -a "$MNT_REPO/$IMAGE_NAME" "$MNT_STICK/home/partimag/"
 sudo umount "$MNT_REPO"; sudo qemu-nbd -d "$NBD_REPO"
 
 log "installing custom restore script + default boot entry"
-# Custom restore: pick the first NON-removable disk (the box's internal drive, never the
-# USB) and restore onto it. Works in the VM test (target is the only disk) and on metal.
+# Custom restore: Clonezilla Live's root is the squashfs overlay, so this script and the
+# image actually live on the boot medium (mounted at /run/live/medium). Locate that medium
+# and bind its /home/partimag onto /home/partimag, where ocs-sr looks for the image; then
+# restore onto the first NON-removable disk (the box's internal drive, never the USB).
 sudo tee "$MNT_STICK/commec-restore" >/dev/null <<RESTORE
 #!/bin/bash
-set -e
-dest=\$(lsblk -dno NAME,RM,TYPE | awk '\$2==0 && \$3=="disk"{print \$1; exit}')
-echo "Commec: restoring $IMAGE_NAME onto /dev/\$dest ..."
-exec ocs-sr -g auto -e2 -j2 -icds -scr -sfsck -batch -nogui -p poweroff restoredisk $IMAGE_NAME "\$dest"
+# Do the medium-locate + repo bind quietly (to a log), then show a clear "installing, do not
+# power off" banner and run ocs-sr with its partclone progress VISIBLE on the console. The
+# restore takes ~15-30 min; a frozen screen otherwise looks hung and invites a power-pull
+# mid-write (which corrupts the disk).
+{
+  MED=""
+  for d in /run/live/medium /lib/live/mount/medium; do
+    [ -e "\$d/home/partimag/$IMAGE_NAME" ] && MED="\$d" && break
+  done
+  mkdir -p /home/partimag
+  mount --bind "\$MED/home/partimag" /home/partimag
+  dest=\$(lsblk -dno NAME,RM,TYPE | awk '\$2==0 && \$3=="disk"{print \$1; exit}')
+  echo "MED=\$MED dest=\$dest"
+} >/tmp/commec-restore.log 2>&1
+clear 2>/dev/null || true
+cat <<'BANNER'
+
+   ################################################################
+   #                                                              #
+   #      C O M M E C   -   installing onto this computer         #
+   #                                                              #
+   ################################################################
+
+     Restoring the appliance system and databases to the internal disk.
+     This one-time step takes about 15 to 30 minutes.
+
+     >>>   Do NOT power off.   A progress bar appears below.   <<<
+
+BANNER
+sleep 4
+# Restore, then GUARANTEE /dev exists on the restored root before power-off. The appliance
+# base (Debian genericcloud) ships an EMPTY /dev and relies on devtmpfs mounting at boot; if
+# any imaging step loses the /dev mountpoint, the initramfs init-handoff opens
+# \$rootmnt/dev/console, the open fails, and PID1 exits -> "Attempted to kill init" panic.
+# -p true = no-op postaction (do NOT auto-poweroff) so the guard below runs.
+ocs-sr -g auto -e2 -j2 -icds -scr -sfsck -batch -nogui -p true restoredisk $IMAGE_NAME "\$dest"
+partprobe "/dev/\$dest" 2>/dev/null || true; sleep 1
+rp=\$(lsblk -lno NAME,FSTYPE "/dev/\$dest" | awk '\$2=="ext4"{print \$1; exit}')
+if [ -n "\$rp" ]; then
+  mkdir -p /mnt/commec-root && mount "/dev/\$rp" /mnt/commec-root
+  mkdir -p /mnt/commec-root/dev
+  [ -e /mnt/commec-root/dev/console ] || mknod -m 600 /mnt/commec-root/dev/console c 5 1
+  [ -e /mnt/commec-root/dev/null ]    || mknod -m 666 /mnt/commec-root/dev/null    c 1 3
+  sync; umount /mnt/commec-root
+fi
+poweroff -f
 RESTORE
 sudo chmod +x "$MNT_STICK/commec-restore"
 
@@ -79,9 +123,13 @@ sudo cp "$GRUBCFG" "$GRUBCFG.orig"
 {
   echo "set default=0"
   echo "set timeout=$BOOT_TIMEOUT"
+  # ocs_prerun copies commec-restore off the (non-executable, FAT) medium into /tmp and
+  # makes it runnable, since ocs_live_run needs an executable path in the live filesystem
+  # (a bare /commec-restore does not exist there). console=tty0 last = screen is primary;
+  # ttyS0 kept for serial/VM debugging.
   echo 'menuentry "Commec: RESTORE appliance to internal disk (AUTO)" {'
   echo '  search --set -f /live/vmlinuz'
-  echo '  linux /live/vmlinuz boot=live union=overlay username=user config components quiet noswap edd=on enforcing=0 locales=en_US.UTF-8 keyboard-layouts=NONE net.ifnames=0 nosplash ocs_live_batch=yes ocs_live_run="/commec-restore"'
+  echo '  linux /live/vmlinuz boot=live union=overlay username=user config components quiet noswap edd=on enforcing=0 locales=en_US.UTF-8 keyboard-layouts=NONE net.ifnames=0 nosplash console=ttyS0,115200 console=tty0 ocs_live_batch=yes ocs_prerun="cp /run/live/medium/commec-restore /tmp/commec-restore 2>/dev/null || cp /lib/live/mount/medium/commec-restore /tmp/commec-restore" ocs_prerun1="chmod +x /tmp/commec-restore" ocs_live_run="/tmp/commec-restore"'
   echo '  initrd /live/initrd.img'
   echo '}'
   sudo cat "$GRUBCFG.orig"
