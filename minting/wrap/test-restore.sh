@@ -21,7 +21,7 @@ qemu-img create -f qcow2 "$TARGET_IMG" "$TARGET_SIZE" >/dev/null
 # image. -icds skips the dest-size check (110G image onto a larger disk is intentional).
 log "restoring '$IMAGE_NAME' onto blank target ..."
 run_clonezilla \
-  "ocs-sr -g auto -e2 -j2 -icds -scr -sfsck -batch -nogui -p poweroff restoredisk $IMAGE_NAME vda" \
+  "ocs-sr -e2 -j2 -icds -scr -sfsck -batch -nogui -p poweroff restoredisk $IMAGE_NAME vda" \
   "dev:///dev/vdb1" \
   -drive "file=$TARGET_IMG,if=virtio,format=qcow2" \
   -drive "file=$CZ_REPO_IMG,if=virtio,format=qcow2"

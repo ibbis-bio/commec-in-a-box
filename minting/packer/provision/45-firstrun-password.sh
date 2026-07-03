@@ -15,11 +15,15 @@ install -m 0755 /tmp/firstboot/commec-setup-wait.sh         /usr/local/bin/comme
 
 # One-time privilege: commec-user may run ONLY this helper without a password, so the
 # very first password can be set. The helper deletes this file once done.
-cat >/etc/sudoers.d/commec-firstrun <<'EOF'
+# NB: the filename MUST sort AFTER /etc/sudoers.d/commec-user (the blanket
+# "commec-user ALL=(ALL) ALL" that first-boot installs). sudo applies the LAST matching
+# rule, so an earlier-sorting NOPASSWD exception is overridden by that blanket rule and
+# `sudo -n` would demand a password we cannot have yet. Hence the zzz- prefix. Do not rename.
+cat >/etc/sudoers.d/zzz-commec-firstrun <<'EOF'
 commec-user ALL=(root) NOPASSWD: /usr/local/sbin/commec-set-initial-password
 EOF
-chmod 0440 /etc/sudoers.d/commec-firstrun
-visudo -cf /etc/sudoers.d/commec-firstrun
+chmod 0440 /etc/sudoers.d/zzz-commec-firstrun
+visudo -cf /etc/sudoers.d/zzz-commec-firstrun
 
 # Autostart the dialog (after wallpaper setup, before conky).
 install -d "$USER_HOME/.config/autostart"

@@ -82,18 +82,30 @@ sudo tee "$MNT_STICK/commec-restore" >/dev/null <<RESTORE
   echo "MED=\$MED dest=\$dest"
 } >/tmp/commec-restore.log 2>&1
 clear 2>/dev/null || true
-cat <<'BANNER'
+# Branded COMMEC banner (matches the first-boot screen). Colors resolve at restore time.
+O=\$(printf '\033[38;5;202m'); B=\$(printf '\033[48;5;17m'); R=\$(printf '\033[0m')
+cat <<BANNER
 
-   ################################################################
-   #                                                              #
-   #      C O M M E C   -   installing onto this computer         #
-   #                                                              #
-   ################################################################
+ ██████╗ ██████╗ ███╗   ███╗███╗   ███╗███████╗ ██████╗ \$O         ▄▄               \$R
+██╔════╝██╔═══██╗████╗ ████║████╗ ████║██╔════╝██╔════╝ \$O       ▄███▌              \$R
+██║     ██║   ██║██╔████╔██║██╔████╔██║█████╗  ██║      \$O      ▐█████              \$R
+██║     ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██╔══╝  ██║      \$O     ▐██████▌             \$R
+╚██████╗╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║███████╗╚██████╗ \$O     ███████▌             \$R
+ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚══════╝ ╚═════╝ \$O    ▐███████▌             \$R
+\$B█ █████▄ █████▄ █ ▄█▀█▄                                 \$O     ███████   ▄█▄      \$R
+\$B█ █    █ █    █ █ █   ▀            BOX                  \$O      █████▌  ▄███▄▄     \$R
+\$B█ █████▄ █████▄ █ ▀███▄            SETUP                \$O      ▐█████▄██▀    ▀▄    \$R
+\$B█ █    █ █    █ █ ▄   █              UTILITY            \$O      ▐████████       ▌  \$R
+\$B█ █████▀ █████▀ █ ▀█▄█▀                                 \$O      ████████▀         \$R
+                                                        \$O   ▄▄██████▀▀             \$R
+                                                        \$O ▀▀                       \$R
+
+     Installing onto this computer.
 
      Restoring the appliance system and databases to the internal disk.
      This one-time step takes about 15 to 30 minutes.
 
-     >>>   Do NOT power off.   A progress bar appears below.   <<<
+     >>>   Do NOT power off.   <<<
 
 BANNER
 sleep 4
@@ -102,7 +114,13 @@ sleep 4
 # any imaging step loses the /dev mountpoint, the initramfs init-handoff opens
 # \$rootmnt/dev/console, the open fails, and PID1 exits -> "Attempted to kill init" panic.
 # -p true = no-op postaction (do NOT auto-poweroff) so the guard below runs.
-ocs-sr -g auto -e2 -j2 -icds -scr -sfsck -batch -nogui -p true restoredisk $IMAGE_NAME "\$dest"
+# NO -g flag: skip the grub reinstall entirely. ocs-sr only runs ocs-install-grub when -g is
+# passed (ocs-functions: `if [ "$install_grub" = "on" ]`), so omitting -g means no grub step at
+# all. partclone restores the ESP (nvme..p15) byte-for-byte with packer's bootloader incl. the
+# universal /EFI/BOOT/BOOTX64.EFI removable path, so a reinstall is redundant (and Clonezilla's
+# -g auto reinstall fails anyway: "cannot find EFI directory", it never mounts the ESP at
+# /boot/efi). NB: -g has no "skip" value - passing one makes ocs-install-grub terminate the run.
+ocs-sr -e2 -j2 -icds -scr -sfsck -batch -nogui -p true restoredisk $IMAGE_NAME "\$dest"
 partprobe "/dev/\$dest" 2>/dev/null || true; sleep 1
 rp=\$(lsblk -lno NAME,FSTYPE "/dev/\$dest" | awk '\$2=="ext4"{print \$1; exit}')
 if [ -n "\$rp" ]; then
@@ -110,6 +128,16 @@ if [ -n "\$rp" ]; then
   mkdir -p /mnt/commec-root/dev
   [ -e /mnt/commec-root/dev/console ] || mknod -m 600 /mnt/commec-root/dev/console c 5 1
   [ -e /mnt/commec-root/dev/null ]    || mknod -m 666 /mnt/commec-root/dev/null    c 1 3
+  # Fix sudoers last-match ordering so the first-run password helper's NOPASSWD rule wins over
+  # first-boot's blanket 'commec-user ALL=(ALL) ALL'. Images predating the pipeline fix ship the
+  # rule as 'commec-firstrun' (sorts BEFORE commec-user -> overridden -> operator locked out of
+  # admin, "unable to set password"). Rename it to sort last + repoint the helper's self-cleanup.
+  # No-op on already-fixed images (they ship zzz-commec-firstrun and the helper already targets it).
+  sdd=/mnt/commec-root/etc/sudoers.d
+  if [ -f "\$sdd/commec-firstrun" ] && [ ! -e "\$sdd/zzz-commec-firstrun" ]; then
+    mv "\$sdd/commec-firstrun" "\$sdd/zzz-commec-firstrun"
+    sed -i 's#sudoers.d/commec-firstrun#sudoers.d/zzz-commec-firstrun#' /mnt/commec-root/usr/local/sbin/commec-set-initial-password 2>/dev/null || true
+  fi
   sync; umount /mnt/commec-root
 fi
 poweroff -f
