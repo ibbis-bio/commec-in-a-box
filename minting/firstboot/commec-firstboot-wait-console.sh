@@ -17,6 +17,9 @@ OLD_PRINTK=$(cut -f1 /proc/sys/kernel/printk 2>/dev/null)
 echo 1 > /proc/sys/kernel/printk 2>/dev/null || true
 trap 'printf "\033[?25h"; [ -n "${OLD_PRINTK:-}" ] && echo "$OLD_PRINTK" > /proc/sys/kernel/printk 2>/dev/null || true' EXIT
 
+# The default Lat15 console font lacks half-blocks (renders them as '#'); load the bundled CP437
+# font that has the full block set so the COMMEC/IBBIS art + logo render correctly.
+setfont /usr/local/share/commec/console8x16.psf.gz 2>/dev/null || setfont default8x16 2>/dev/null || true
 printf '\033[?25l\033[2J\033[H'   # hide cursor, clear, home
 cat <<BANNER
  ██████╗ ██████╗ ███╗   ███╗███╗   ███╗███████╗ ██████╗ ${O}         ▄▄               ${R}

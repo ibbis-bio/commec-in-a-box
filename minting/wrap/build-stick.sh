@@ -83,6 +83,10 @@ sudo tee "$MNT_STICK/commec-restore" >/dev/null <<RESTORE
   echo "MED=\$MED dest=\$dest"
 } >/tmp/commec-restore.log 2>&1
 clear 2>/dev/null || true
+# Load a console font with the full block/half-block set so the IBBIS mark + logo render (the
+# default Lat15 console font has only the full block and shows half-blocks as '#'). Clonezilla
+# ships default8x16 (CP437), which has them all.
+setfont default8x16 2>/dev/null || true
 # Branded COMMEC banner (matches the first-boot screen). Colors resolve at restore time.
 O=\$(printf '\033[38;5;202m'); B=\$(printf '\033[48;5;17m'); R=\$(printf '\033[0m')
 cat <<BANNER
