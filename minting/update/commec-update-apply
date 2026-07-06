@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Root helper (invoked via a narrow NOPASSWD sudoers rule) to update commec A/B-style:
+#   commec-update-apply <version>    build a new env, smoke-test, flip current-env, record release
+#   commec-update-apply --rollback   flip back to the previous env recorded in release.json
+# The live env is never touched in place; the old versioned env stays for instant rollback.
+set -uo pipefail
+
+CONDA=/opt/miniconda/bin/conda
+PY=/opt/miniconda/bin/python
+ENVROOT=/opt/miniconda/envs
+LINK=/opt/commec/current-env
+CONF=/etc/commec-box/update.conf
+REL=/etc/commec-box/release.json
+LOG=/var/log/commec-update.log
+
+exec >>"$LOG" 2>&1
+echo "=== commec-update-apply $(date -u +%FT%TZ) arg='${1:-}' ==="
+
+conda_channels="conda-forge,bioconda"; channel="stable"
+[ -r "$CONF" ] && . "$CONF"
+
+write_release() { # <version> <env> <prev_env>
+  cat >"$REL" <<JSON
+{ "version": "$1", "channel": "$channel", "env": "$2", "prev_env": "$3", "applied": "$(date -u +%FT%TZ)" }
+JSON
+  chmod 0644 "$REL"
+}
+
+if [ "${1:-}" = "--rollback" ]; then
+  prev=$("$PY" -c 'import json;print(json.load(open("'"$REL"'")).get("prev_env",""))' 2>/dev/null || true)
+  [ -n "$prev" ] && [ -d "$prev" ] || { echo "no valid prev_env to roll back to"; exit 5; }
+  cur=$(readlink -f "$LINK" 2>/dev/null)
+  ln -sfn "$prev" "$LINK"
+  ver=$("$CONDA" list -p "$prev" '^commec$' --json 2>/dev/null | "$PY" -c 'import json,sys;d=json.load(sys.stdin);print(d[0]["version"] if d else "unknown")')
+  write_release "$ver" "$prev" "$cur"
+  echo "=== rolled back to commec $ver ($prev) ==="; exit 0
+fi
+
+ver="${1:-}"
+case "$ver" in ''|*[!A-Za-z0-9.+_-]*) echo "invalid version: '$ver'"; exit 2 ;; esac
+
+chan_args=""; oldifs=$IFS; IFS=','
+for c in $conda_channels; do [ -n "$c" ] && chan_args="$chan_args -c $c"; done
+IFS=$oldifs
+
+newenv="$ENVROOT/commec-env-$ver"
+prev=$(readlink -f "$LINK" 2>/dev/null)
+echo "building $newenv (channels:$chan_args) prev=$prev"
+
+if [ ! -x "$newenv/bin/commec" ]; then
+  # NOTE: --file <lockfile> goes here once upstream publishes per-release conda locks; the
+  # rest of the flow (smoke-test, flip, record) is identical.
+  "$CONDA" create -y -p "$newenv" $chan_args "commec=$ver" || { echo "conda create failed"; rm -rf "$newenv"; exit 3; }
+fi
+
+# Smoke test before flipping - a broken env must never become current.
+if ! "$newenv/bin/commec" --version >/dev/null 2>&1; then
+  echo "smoke test failed (commec --version) - not flipping"; exit 4
+fi
+
+ln -sfn "$newenv" "$LINK"
+write_release "$ver" "$newenv" "$prev"
+echo "=== now on commec $ver ($newenv); previous kept at $prev for rollback ==="

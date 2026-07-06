@@ -35,20 +35,13 @@
   },
 
   "commec_main_dbs": {
-    "_comment": "Large BLAST DBs staged from the TRANSFER USB stick; working copies live on the COMMEC external at /mnt/commec/dbs-staging. ~298 GB decompressed combined. Decompress with 'zstd -d --long=31' (large window).",
-    "nr_blast": {
-      "archive": "nr.tar.zst",
-      "kind": "BLAST protein (nr.NN.p*)",
-      "extract_to": "nr_blast/",
-      "size_bytes": 47570880256,
-      "sha256": "b655e3d99d6241b9bbde367d1bb54471bca960ffa827a724813ec3a9fb87a18a"
-    },
-    "core_nt_blast": {
-      "archive": "core_nt.tar.zst",
-      "kind": "BLAST nucleotide (core_nt.NN.n*)",
-      "extract_to": "nt_blast/",
-      "size_bytes": 34378467903,
-      "sha256": "a3e984010714efa1a1792380ed6a8b512cb4242979259f309a81ae8ab3098595"
+    "_comment": "MONKEY-PATCH (2026-07-03, upstream DB naming NOT finalized): one bundled archive holding the reduced protein(prot)+nucleotide(nucl) BLAST DBs AND the ncbi_taxonomy taxdump; ~36 GiB decompressed (vs ~298 GB before). Archive top dir is taxonomy/, with taxonomy/{protein,nucleotide,ncbi_taxonomy}. commec's shipped config still points at the OLD paths (nr_blast/nr, nt_blast/core_nt, taxonomy/), so 30-commec-setup.sh patches base_paths + those three db paths to this layout. Revert to per-DB pins when upstream finalizes naming. Decompress with 'zstd -d --long=31' (large window).",
+    "bundle": {
+      "archive": "taxonomy.tar.zst",
+      "kind": "bundled BLAST protein(prot) + nucleotide(nucl) + ncbi_taxonomy taxdump",
+      "extract_to": ".",
+      "size_bytes": 7241525419,
+      "sha256": "3d6462702763a7ddd14c7e8b3a606f5e58293a953da2f6da94f388bdf8eed8f0"
     }
   },
 

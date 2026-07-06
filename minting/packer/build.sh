@@ -78,7 +78,7 @@ if [ -f "$DB_DISK" ] && [ "$(blkid -s LABEL -o value "$DB_DISK" 2>/dev/null)" = 
 else
   echo "building $DB_DISK from $STAGING/*.zst (no-sudo: mkfs.ext4 -d)"
   rm -f "$DB_DISK"
-  truncate -s 90G "$DB_DISK"
+  truncate -s 12G "$DB_DISK"   # holds the ~7 GB compressed bundled DB (was 90G for the old nr+nt)
   # Embed the .zst tarballs at mkfs time (-d <dir>), avoiding a root-only loop mount.
   # STAGING holds exactly the .zst (+ SHA256SUMS); all get copied into the fs image.
   mkfs.ext4 -q -F -L COMMEC_DBSRC -d "$STAGING" "$DB_DISK"

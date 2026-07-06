@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Check the configured channel(s) for a newer commec. Writes ONE token to the status file
+# (and echoes it): "up-to-date" | "available:<version>" | "offline".
+# Runs as the desktop user - read-only, no privilege. Driven by commec-update-popup.
+set -uo pipefail
+
+CONDA=/opt/miniconda/bin/conda
+PY=/opt/miniconda/bin/python
+ENVLINK=/opt/commec/current-env
+CONF=/etc/commec-box/update.conf
+STATUS="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/commec-update.status"
+
+# Defaults (overridable in update.conf)
+conda_channels="conda-forge,bioconda"
+probe_url="https://conda.anaconda.org"
+[ -r "$CONF" ] && . "$CONF"
+
+set_status() { printf '%s\n' "$1" > "$STATUS" 2>/dev/null; printf '%s\n' "$1"; }
+
+# -c args from the comma list
+chan_args=""; oldifs=$IFS; IFS=','
+for c in $conda_channels; do [ -n "$c" ] && chan_args="$chan_args -c $c"; done
+IFS=$oldifs
+
+# Installed version (via the current-env symlink)
+installed=$("$CONDA" list -p "$ENVLINK" '^commec$' --json 2>/dev/null | "$PY" -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: d=[]
+print(d[0]["version"] if d else "")' 2>/dev/null)
+[ -z "$installed" ] && installed="0"
+
+# Reachability probe so "offline" is distinguishable from "up-to-date"
+if ! curl -fsS --max-time 8 -o /dev/null "$probe_url" 2>/dev/null; then
+  set_status offline; exit 0
+fi
+
+# Newest available across the channels (conda version ordering)
+latest=$(timeout 120 "$CONDA" search $chan_args '^commec$' --json 2>/dev/null | "$PY" -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+vs=[p.get("version") for p in d.get("commec",[]) if p.get("version")]
+if not vs: sys.exit(1)
+try:    from conda.models.version import VersionOrder as V
+except Exception: from packaging.version import parse as V
+print(str(max(vs, key=V)))' 2>/dev/null)
+
+# Connected but the search failed -> be conservative, treat as offline (do not nag/false-prompt)
+[ -z "$latest" ] && { set_status offline; exit 0; }
+
+newer=$("$PY" -c '
+import sys
+a,b=sys.argv[1],sys.argv[2]
+try:    from conda.models.version import VersionOrder as V
+except Exception: from packaging.version import parse as V
+print("yes" if V(b) > V(a) else "no")' "$installed" "$latest" 2>/dev/null)
+
+if [ "$newer" = "yes" ]; then set_status "available:$latest"; else set_status up-to-date; fi

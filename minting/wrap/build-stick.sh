@@ -16,11 +16,12 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 STICK_IMG="${STICK_IMG:-$WORK_DIR/commec-deploy-stick.img}"
-# Size the disk image just above the baked payload (~85G: the partclone image + Clonezilla
-# Live) so it fits generic "128 GB" media (~125.8 GB actual) with margin. A 128G image is
-# 137 GB and will NOT fit such sticks. Bump this if the databases grow past the headroom.
-STICK_SIZE="${STICK_SIZE:-90G}"
-BOOT_TIMEOUT="${BOOT_TIMEOUT:-10}"
+# Size the disk image just above the baked payload (the partclone image of the master +
+# Clonezilla Live). With the bundled ~7 GB compressed DB the master's used space is ~15 GB, so a
+# 30 GB image fits a cheap 32 GB stick with margin and flashes/deploys fast. Bump if the payload
+# grows. (Was 90G when the master carried the ~78 GB compressed nr+nt DBs.)
+STICK_SIZE="${STICK_SIZE:-30G}"
+BOOT_TIMEOUT="${BOOT_TIMEOUT:-5}"
 [ -f "$CZ_REPO_IMG" ] || die "CZ_REPO_IMG not found (run save.sh first): $CZ_REPO_IMG"
 ensure_clonezilla_iso
 
@@ -160,7 +161,10 @@ sudo cp "$GRUBCFG" "$GRUBCFG.orig"
   echo '  linux /live/vmlinuz boot=live union=overlay username=user config components quiet noswap edd=on enforcing=0 locales=en_US.UTF-8 keyboard-layouts=NONE net.ifnames=0 nosplash console=ttyS0,115200 console=tty0 ocs_live_batch=yes ocs_prerun="cp /run/live/medium/commec-restore /tmp/commec-restore 2>/dev/null || cp /lib/live/mount/medium/commec-restore /tmp/commec-restore" ocs_prerun1="chmod +x /tmp/commec-restore" ocs_live_run="/tmp/commec-restore"'
   echo '  initrd /live/initrd.img'
   echo '}'
-  sudo cat "$GRUBCFG.orig"
+  # Append Clonezilla's original entries, but strip its own `set default=`/`set timeout=`
+  # (it ships timeout=30): grub processes top-to-bottom and the LAST assignment wins, so
+  # leaving them in would clobber our default=0 + timeout=$BOOT_TIMEOUT above.
+  sudo sed -E '/^set (timeout|default)=/d' "$GRUBCFG.orig"
 } | sudo tee "$GRUBCFG" >/dev/null
 
 sudo sync

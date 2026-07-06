@@ -40,7 +40,7 @@ variable "output_dir" {
 }
 variable "disk_size" {
   type    = string
-  default = "110G"
+  default = "40G"   # master virtual size; ~15G used with the bundled ~7 GB DB (was 110G for nr+nt)
 }
 variable "memory" {
   type    = number
@@ -109,6 +109,11 @@ build {
     source      = "${path.root}/../assets"
     destination = "/tmp"
   }
+
+  provisioner "file" {
+    source      = "${path.root}/../update"
+    destination = "/tmp"
+  }
   # uploads <wallpaper_dir> as /tmp/wallpaper (basename of the dir is "wallpaper")
   provisioner "file" {
     source      = var.wallpaper_dir
@@ -134,6 +139,7 @@ build {
       "${path.root}/provision/30-commec-setup.sh",
       "${path.root}/provision/40-desktop.sh",
       "${path.root}/provision/45-firstrun-password.sh",
+      "${path.root}/provision/47-update-system.sh",
       "${path.root}/provision/50-stage-dbs.sh",
       "${path.root}/provision/90-firstboot-install.sh",
       "${path.root}/provision/99-cleanup.sh",

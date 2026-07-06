@@ -42,8 +42,15 @@ dbdir = sys.argv[1].rstrip("/") + "/"
 p = pathlib.Path(str(importlib.resources.files("commec").joinpath("screen-default-config.yaml")))
 cfg = yaml.safe_load(p.read_text())
 cfg.setdefault("base_paths", {})["default"] = dbdir
+# MONKEY-PATCH: point the DB paths at the bundled taxonomy.tar.zst layout
+# (taxonomy/{protein/prot, nucleotide/nucl, ncbi_taxonomy}). commec's shipped defaults still use
+# the OLD nr_blast/nr | nt_blast/core_nt | taxonomy/ paths; drop this once upstream finalizes naming.
+db = cfg.setdefault("databases", {})
+db.setdefault("regulated_protein", {}).setdefault("blast", {})["path"] = "{default}taxonomy/protein/prot"
+db.setdefault("regulated_nt", {})["path"] = "{default}taxonomy/nucleotide/nucl"
+db.setdefault("taxonomy", {})["path"] = "{default}taxonomy/ncbi_taxonomy/"
 p.write_text(yaml.safe_dump(cfg, sort_keys=False))
-print("patched base_paths.default ->", dbdir, "in", p)
+print("patched base_paths.default + bundled-DB paths ->", dbdir, "in", p)
 PY
 
 chown -R commec-user:commec-user /home/commec-user/commec-dbs

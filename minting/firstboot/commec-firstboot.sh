@@ -54,21 +54,23 @@ resize2fs "$ROOT_SRC" || echo "WARN: resize2fs failed"
 
 # --- 3. decompress staged DBs into ~commec-user/commec-dbs ---
 echo "[3/3] unpacking databases (this takes a while)"
-declare -A MAP=( ["nr.tar.zst"]="nr_blast" ["core_nt.tar.zst"]="nt_blast" )
-for f in "${!MAP[@]}"; do
-  sub="${MAP[$f]}"
-  src="$STAGING/$f"
-  if [ ! -f "$src" ]; then echo "  MISSING $src - skipping"; continue; fi
-  echo "  $f -> $DBROOT/$sub"
-  # Idempotent/resumable: a tarball is only removed AFTER a successful extract, so if we
-  # reach here the dir may hold a partial extract from an interrupted run - wipe it first.
-  rm -rf "$DBROOT/$sub"; mkdir -p "$DBROOT/$sub"
-  if tar -I 'zstd -d --long=31' -xf "$src" -C "$DBROOT/$sub"; then
-    rm -f "$src"
+# MONKEY-PATCH: one bundled archive whose top dir is taxonomy/{protein,nucleotide,ncbi_taxonomy}.
+# Extract it into $DBROOT (not a per-DB subdir). We wipe $DBROOT/taxonomy first so the bundled
+# taxdump replaces the redundant one `commec setup` pulled live at build time; biorisk +
+# low_concern (also from setup) are sibling dirs and untouched. Removing the tarball only after a
+# successful extract keeps it resumable across an interrupted run.
+BUNDLE="$STAGING/taxonomy.tar.zst"
+if [ -f "$BUNDLE" ]; then
+  echo "  taxonomy.tar.zst -> $DBROOT/taxonomy/{protein,nucleotide,ncbi_taxonomy}"
+  rm -rf "$DBROOT/taxonomy"
+  if tar -I 'zstd -d --long=31' -xf "$BUNDLE" -C "$DBROOT"; then
+    rm -f "$BUNDLE"
   else
-    echo "ERROR: failed to unpack $f"; exit 1
+    echo "ERROR: failed to unpack taxonomy.tar.zst"; exit 1
   fi
-done
+else
+  echo "  MISSING $BUNDLE - skipping DB unpack"
+fi
 chown -R commec-user:commec-user "$DBROOT"
 rmdir "$STAGING" 2>/dev/null || true
 
