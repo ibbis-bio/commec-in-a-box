@@ -53,8 +53,11 @@ if [ ! -x "$newenv/bin/commec" ]; then
   "$CONDA" create -y -p "$newenv" $chan_args "commec=$ver" || { echo "conda create failed"; rm -rf "$newenv"; exit 3; }
 fi
 
-# Smoke test before flipping - a broken env must never become current.
-if ! "$newenv/bin/commec" --version >/dev/null 2>&1; then
+# Smoke test before flipping - a broken env must never become current. Run it THROUGH the env
+# (conda run -p), not the bare binary: commec shells out to taxonkit et al. by bare name, so the
+# env's bin must be on PATH. The bare `$newenv/bin/commec --version` fails here because apply runs
+# as root, whose PATH has no commec env -> a healthy env would be falsely rejected.
+if ! "$CONDA" run -p "$newenv" commec --version >/dev/null 2>&1; then
   echo "smoke test failed (commec --version) - not flipping"; exit 4
 fi
 
