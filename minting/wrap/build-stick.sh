@@ -80,7 +80,10 @@ sudo tee "$MNT_STICK/commec-restore" >/dev/null <<RESTORE
   mkdir -p /home/partimag
   mount --bind "\$MED/home/partimag" /home/partimag
   dest=\$(lsblk -dno NAME,RM,TYPE | awk '\$2==0 && \$3=="disk"{print \$1; exit}')
-  echo "MED=\$MED dest=\$dest"
+  # the USB we booted from = the disk backing the medium; used to auto-restart on its removal
+  usbdisk=\$(lsblk -no PKNAME "\$(findmnt -no SOURCE "\$MED" 2>/dev/null)" 2>/dev/null | head -1)
+  [ -z "\$usbdisk" ] && usbdisk=\$(lsblk -dno NAME,RM,TYPE | awk '\$2==1 && \$3=="disk"{print \$1; exit}')
+  echo "MED=\$MED dest=\$dest usbdisk=\$usbdisk"
 } >/tmp/commec-restore.log 2>&1
 clear 2>/dev/null || true
 # Load a console font with the full block/half-block set so the IBBIS mark + logo render (the
@@ -145,7 +148,36 @@ if [ -n "\$rp" ]; then
   fi
   sync; umount /mnt/commec-root
 fi
-poweroff -f
+sync
+echo 1 > /proc/sys/kernel/sysrq 2>/dev/null || true   # allow the kernel-level reboot below
+clear 2>/dev/null || true
+setfont default8x16 2>/dev/null || true
+cat <<'DONE'
+
+   ################################################################
+   #                                                              #
+   #      C O M M E C   -   installation complete!                #
+   #                                                              #
+   ################################################################
+
+     >>>   Remove the USB drive now.   <<<
+
+     The computer restarts into COMMEC on its own once the USB
+     drive is out - you don't need to touch the power button.
+
+DONE
+# Restart automatically once the USB is pulled - and ONLY then, so we never reboot straight back
+# into this installer. Reboot via the kernel (magic SysRq 'b'): pulling the USB removes the live
+# filesystem, so an external 'reboot' binary may be unavailable by that point, whereas echo+procfs
+# is a shell builtin writing to a kernel file and needs nothing from the medium.
+if [ -n "\$usbdisk" ]; then
+  spin='-\\|/'; n=0
+  while [ -b "/dev/\$usbdisk" ]; do
+    printf '\r     waiting for the USB drive to be removed...  %s ' "\${spin:\$((n%4)):1}"; n=\$((n+1)); sleep 1
+  done
+fi
+printf '\r\033[K     restarting into COMMEC...\n'
+echo b > /proc/sysrq-trigger 2>/dev/null || reboot -f
 RESTORE
 sudo chmod +x "$MNT_STICK/commec-restore"
 
