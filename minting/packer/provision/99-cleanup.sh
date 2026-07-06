@@ -12,6 +12,13 @@ set -euxo pipefail
 # Remove the build SSH key so the deployed box doesn't trust it.
 truncate -s 0 /home/commec-user/.ssh/authorized_keys 2>/dev/null || true
 
+# Reclaim commec-user's home. Provisioning runs conda under `sudo -E`, which keeps
+# HOME=/home/commec-user, so conda writes root-owned dotdirs (~/.cache, ~/.conda) into
+# the user's home. At runtime that breaks the updater: conda's Anaconda-ToS plugin can't
+# write its cache under the root-owned ~/.cache -> CondaToSPermissionError -> `conda
+# search` aborts -> the updater falsely reports "offline" on every boot.
+chown -R commec-user:commec-user /home/commec-user
+
 # Disable cloud-init on the deployed box.
 touch /etc/cloud/cloud-init.disabled
 cloud-init clean --logs 2>/dev/null || true

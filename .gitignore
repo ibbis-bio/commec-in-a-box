@@ -1,2 +1,10 @@
 TODO.md
 aws/README.md
+
+# TEMPORARY gui-branch test channel (binary conda pkgs; do not commit)
+minting/packer/devchannel/*
+!minting/packer/devchannel/.gitkeep
+
+# TEMPORARY staged gui/ tree for the kiosk (from the gui branch)
+minting/packer/guisrc/*
+!minting/packer/guisrc/.gitkeep

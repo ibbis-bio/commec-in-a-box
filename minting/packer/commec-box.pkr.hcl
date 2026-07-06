@@ -33,6 +33,24 @@ variable "biorisk_url" {
   type = string # pinned commec-dbs.zip URL
 }
 
+# --- TEMPORARY: gui-branch testing toggles (revert before the real gui->develop PR) ---
+variable "commec_source" {
+  type    = string
+  default = "stable" # "gui" -> install a local gui-branch dev build (20-commec.sh)
+}
+variable "commec_channel" {
+  type    = string
+  default = "stable" # "devel" -> point the updater at the rose dev channel (47-update-system.sh)
+}
+variable "commec_gui_version" {
+  type    = string
+  default = "1.0.6.dev1"
+}
+variable "commec_update_url" {
+  type    = string
+  default = "http://10.0.2.2:8000" # QEMU user-net gateway = rose host (Phase-3 VM test)
+}
+
 # --- VM sizing ---
 variable "output_dir" {
   type    = string
@@ -40,7 +58,7 @@ variable "output_dir" {
 }
 variable "disk_size" {
   type    = string
-  default = "40G"   # master virtual size; ~15G used with the bundled ~7 GB DB (was 110G for nr+nt)
+  default = "40G" # master virtual size; ~15G used with the bundled ~7 GB DB (was 110G for nr+nt)
 }
 variable "memory" {
   type    = number
@@ -114,6 +132,19 @@ build {
     source      = "${path.root}/../update"
     destination = "/tmp"
   }
+
+  # TEMPORARY (gui-branch testing): a local conda channel baked into the image so 20-commec.sh can
+  # install a gui-branch dev build with COMMEC_SOURCE=gui. Empty (just .gitkeep) for stable builds.
+  provisioner "file" {
+    source      = "${path.root}/devchannel"
+    destination = "/tmp"
+  }
+
+  # commec-gui (kiosk) source tree, staged from the gui branch. Installed by 48-commec-gui.sh.
+  provisioner "file" {
+    source      = "${path.root}/guisrc"
+    destination = "/tmp"
+  }
   # uploads <wallpaper_dir> as /tmp/wallpaper (basename of the dir is "wallpaper")
   provisioner "file" {
     source      = var.wallpaper_dir
@@ -130,6 +161,10 @@ build {
     environment_vars = [
       "COMMEC_VERSION=${var.commec_version}",
       "BIORISK_URL=${var.biorisk_url}",
+      "COMMEC_SOURCE=${var.commec_source}",
+      "COMMEC_CHANNEL=${var.commec_channel}",
+      "COMMEC_GUI_VERSION=${var.commec_gui_version}",
+      "COMMEC_UPDATE_URL=${var.commec_update_url}",
       "DEBIAN_FRONTEND=noninteractive",
     ]
     scripts = [
@@ -140,6 +175,7 @@ build {
       "${path.root}/provision/40-desktop.sh",
       "${path.root}/provision/45-firstrun-password.sh",
       "${path.root}/provision/47-update-system.sh",
+      "${path.root}/provision/48-commec-gui.sh",
       "${path.root}/provision/50-stage-dbs.sh",
       "${path.root}/provision/90-firstboot-install.sh",
       "${path.root}/provision/99-cleanup.sh",

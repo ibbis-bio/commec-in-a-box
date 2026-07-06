@@ -24,7 +24,12 @@ install -m 0755 /tmp/update/commec-update-apply    /usr/local/sbin/commec-update
 install -d /etc/commec-box
 install -m 0644 /tmp/update/update.conf /etc/commec-box/update.conf
 if [ "${COMMEC_CHANNEL:-stable}" = "devel" ]; then
-  sed -i 's/^channel=stable/channel=devel/' /etc/commec-box/update.conf
+  # TEMPORARY: point the updater at the rose-served dev channel. Default is the QEMU user-net
+  # gateway (= the rose host) for the Phase-3 VM test; override with COMMEC_UPDATE_URL for a real box.
+  url="${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}"
+  sed -i "s|^channel=stable|channel=devel|" /etc/commec-box/update.conf
+  sed -i "s|^conda_channels=.*|conda_channels=${url},conda-forge,bioconda|" /etc/commec-box/update.conf
+  sed -i "s|^probe_url=.*|probe_url=${url}/noarch/repodata.json|" /etc/commec-box/update.conf
 fi
 
 # release.json from the currently-installed commec

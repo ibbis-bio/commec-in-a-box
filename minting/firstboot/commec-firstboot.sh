@@ -52,6 +52,27 @@ echo "  root=$ROOT_SRC disk=$DISK part=$PARTNUM"
 growpart "$DISK" "$PARTNUM" || echo "  growpart: nothing to do"
 resize2fs "$ROOT_SRC" || echo "WARN: resize2fs failed"
 
+# --- 2b. pre-flight: the grown fs must fit the DB decompression ---
+# The bundled taxonomy DB decompresses to ~36 GiB, and the compressed tarball is still
+# present during extraction, so the target fs needs ~40 GiB free. Fail LOUDLY on a
+# too-small disk here instead of cascading into a mid-extract ENOSPC - which leaves a
+# corrupt DB, blocks the password helper (its write also hits ENOSPC), and surfaces to
+# the operator only as a baffling "Could not set the password". Update NEED_GB if the
+# bundled DB set changes.
+NEED_GB=40
+AVAIL_GB=$(df -PBG /home/commec-user | awk 'NR==2{gsub(/G/,"",$4); print $4+0}')
+echo "[2b] disk check: need ${NEED_GB} GiB free for databases, have ${AVAIL_GB:-0} GiB"
+if [ "${AVAIL_GB:-0}" -lt "$NEED_GB" ]; then
+  cat <<EOF >&2
+########################################################################
+#  FATAL: this disk is too small for the screening databases.          #
+#  Need ~${NEED_GB} GiB free, have ${AVAIL_GB:-0} GiB.
+#  Re-deploy onto an internal disk of at least 64 GB.                   #
+########################################################################
+EOF
+  exit 1
+fi
+
 # --- 3. decompress staged DBs into ~commec-user/commec-dbs ---
 echo "[3/3] unpacking databases (this takes a while)"
 # MONKEY-PATCH: one bundled archive whose top dir is taxonomy/{protein,nucleotide,ncbi_taxonomy}.
@@ -75,5 +96,14 @@ chown -R commec-user:commec-user "$DBROOT"
 rmdir "$STAGING" 2>/dev/null || true
 
 touch "$GUARD"
+
+# Start the GUI server now. Its unit has ConditionPathExists=firstboot.done, which was FALSE
+# when systemd evaluated it at boot (this guard is written only here, post-decompress) - and
+# systemd does NOT re-check a failed condition, so the service was skipped and would never come
+# up on this first boot. Kick it now that the DBs are ready; the kiosk launcher is curl-waiting
+# for it. No-op on non-kiosk images (unit absent). On later boots the guard already exists, so
+# the unit starts normally at boot and this is a harmless restart.
+systemctl start commec-gui.service 2>/dev/null || true
+
 systemctl disable commec-firstboot.service || true
 echo "=== commec-firstboot complete $(date -u +%FT%TZ) ==="

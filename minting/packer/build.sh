@@ -116,6 +116,10 @@ cd "$HERE"
   -var "seed_iso=$SEED_ISO" \
   -var "commec_version=$(pin "['commec']['version']")" \
   -var "biorisk_url=$(pin "['commec_small_dbs']['url']")" \
+  -var "commec_source=${COMMEC_SOURCE:-stable}" \
+  -var "commec_channel=${COMMEC_CHANNEL:-stable}" \
+  -var "commec_gui_version=${COMMEC_GUI_VERSION:-1.0.6.dev1}" \
+  -var "commec_update_url=${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}" \
   -var "output_dir=$OUTPUT_DIR" \
   -var "cpus=${CPUS:-4}" \
   commec-box.pkr.hcl

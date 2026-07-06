@@ -14,7 +14,15 @@ $CONDA config --system --set channel_priority strict
 $CONDA config --system --remove channels defaults 2>/dev/null || true
 $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
 $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
-$CONDA create -y -n commec-env --override-channels -c conda-forge -c bioconda "commec=${COMMEC_VERSION}"
+# TEMPORARY (gui-branch testing): COMMEC_SOURCE=gui installs a locally-built gui-branch dev package
+# from the baked channel at /tmp/devchannel (staged by commec-devbuild.sh into packer/devchannel/).
+# Revert to the default (bioconda release) before the real gui->develop PR.
+if [ "${COMMEC_SOURCE:-stable}" = "gui" ]; then
+  $CONDA create -y -n commec-env --override-channels \
+    -c "file:///tmp/devchannel" -c conda-forge -c bioconda "commec=${COMMEC_GUI_VERSION:-1.0.6.dev1}"
+else
+  $CONDA create -y -n commec-env --override-channels -c conda-forge -c bioconda "commec=${COMMEC_VERSION}"
+fi
 
 # Explicit lockfile (exact package URLs) for reproducibility; pulled back by Packer
 # to be committed alongside pins.json.

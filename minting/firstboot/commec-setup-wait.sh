@@ -32,7 +32,7 @@ start=$(date +%s)
         --fullscreen --on-top --sticky --skip-taskbar --undecorated \
         --image=dialog-information \
         --title="Commec first-time setup" \
-        --text="<big><b>Setting up Commec - first-time only</b></big>\n\nUnpacking the screening databases. This can take a while (often under an hour).\n\n<b>Please DO NOT power off or restart the machine.</b>\nThe desktop will be ready when this screen closes." \
+        --text="<big><b>Setting up Commec - first-time only</b></big>\n\nUnpacking the screening databases. This can take a while.\n\n<b>Please DO NOT power off or restart the machine.</b>\nThe desktop will be ready when this screen closes." \
         2>/dev/null || true
 
 notify-send -u normal "Commec" "Setup complete - the machine is ready to use." 2>/dev/null || true
