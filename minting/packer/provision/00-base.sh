@@ -37,7 +37,7 @@ update-grub
 # wpasupplicant is a *Recommends* of network-manager, so --no-install-recommends drops it -
 # and without it NM cannot operate ANY WiFi radio (the device shows "unavailable"). Add it
 # explicitly so WiFi works on the metal box.
-apt-get install -y --no-install-recommends network-manager wpasupplicant
+apt-get install -y --no-install-recommends network-manager wpasupplicant rfkill iw
 mkdir -p /etc/NetworkManager/conf.d
 printf '[main]\nplugins=keyfile\n' >/etc/NetworkManager/conf.d/10-plugins.conf
 # Remove cloud per-iface configs and stop cloud-init from rewriting netcfg next boot.

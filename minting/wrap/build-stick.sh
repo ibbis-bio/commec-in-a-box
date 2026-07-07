@@ -10,7 +10,7 @@
 #
 # Usage:  ./build-stick.sh        (CZ_REPO_IMG must contain /partimag/<IMAGE_NAME>)
 # Env: STICK_IMG (default $WORK_DIR/commec-deploy-stick.img), STICK_SIZE (default 90G),
-#      BOOT_TIMEOUT secs (default 10).
+#      BOOT_TIMEOUT secs (default 0 = boot straight to auto-restore with no menu; hidden style).
 #
 # STATUS: authored from the proven save/restore params but NOT yet test-booted end to end.
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -21,7 +21,7 @@ STICK_IMG="${STICK_IMG:-$WORK_DIR/commec-deploy-stick.img}"
 # 30 GB image fits a cheap 32 GB stick with margin and flashes/deploys fast. Bump if the payload
 # grows. (Was 90G when the master carried the ~78 GB compressed nr+nt DBs.)
 STICK_SIZE="${STICK_SIZE:-30G}"
-BOOT_TIMEOUT="${BOOT_TIMEOUT:-5}"
+BOOT_TIMEOUT="${BOOT_TIMEOUT:-0}"   # 0 + hidden style = boot straight to auto-restore, no menu
 [ -f "$CZ_REPO_IMG" ] || die "CZ_REPO_IMG not found (run save.sh first): $CZ_REPO_IMG"
 ensure_clonezilla_iso
 
@@ -187,6 +187,12 @@ GRUBCFG="$MNT_STICK/boot/grub/grub.cfg"
 sudo cp "$GRUBCFG" "$GRUBCFG.orig"
 {
   echo "set default=0"
+  # Boot the auto-restore entry with NO interruptible menu. `timeout_style=hidden` shows
+  # nothing and IGNORES arrow keys during the countdown (only a deliberately held Esc/Shift
+  # can summon the menu, on builds that honor it), and BOOT_TIMEOUT defaults to 0 so it boots
+  # instantly. This stops an operator from bumping an arrow key and stalling the install in
+  # the menu. Debugging is done from a separate recovery stick, so no escape hatch is needed.
+  echo "set timeout_style=hidden"
   echo "set timeout=$BOOT_TIMEOUT"
   # ocs_prerun copies commec-restore off the (non-executable, FAT) medium into /tmp and
   # makes it runnable, since ocs_live_run needs an executable path in the live filesystem
