@@ -25,6 +25,13 @@
     "python": ">=3.10"
   },
 
+  "commec_gui": {
+    "_comment": "The kiosk GUI tree (the repo's gui/ dir) fetched from common-mechanism at a pinned commit and mirrored into packer/guisrc/ by build.sh - the branch is the single source of truth (no more hand-staged copy). Bump 'commit' to pull GUI updates; switch 'branch' to main after the gui->develop->main merge. Retires entirely once gui/ ships inside the commec conda package.",
+    "url": "git@github.com:ibbis-bio/common-mechanism.git",
+    "branch": "gui",
+    "commit": "119d3b3740aabac43d43d94c904bfb0e60142fd7"
+  },
+
   "commec_small_dbs": {
     "_comment": "Mandatory biorisk + low_concern DBs (this release renamed 'benign' -> 'low_concern', matching the installed screen-default-config.yaml). Unzips into <db>/biorisk and <db>/low_concern.",
     "version": "v1.1.0",

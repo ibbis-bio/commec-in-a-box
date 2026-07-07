@@ -54,11 +54,39 @@ fetch_verify() { # url  outpath  algo  expected_hash
   echo "verified: $(basename "$out")"
 }
 
+# Mirror the pinned commec GUI tree (the repo's gui/ dir) into packer/guisrc, which the packer
+# file provisioner then bakes into the image. The gui branch AT THE PINNED COMMIT is the single
+# source of truth; guisrc is a build artifact (gitignored), regenerated every build so a stale
+# hand-edit can't silently drift from the branch. Bump commec_gui.commit in pins.json to update.
+# Uses SSH (git@github.com:...) -> relies on the caller's git/SSH auth; a CI runner needs a deploy key.
+fetch_gui() {
+  local url branch commit cache dest
+  url=$(pin "['commec_gui']['url']")
+  branch=$(pin "['commec_gui']['branch']")
+  commit=$(pin "['commec_gui']['commit']")
+  cache="$WORK/commec-gui-src"
+  dest="$HERE/guisrc"
+  if [ ! -d "$cache/.git" ]; then
+    echo "cloning $url"
+    git clone --no-checkout "$url" "$cache"
+  fi
+  git -C "$cache" fetch --quiet origin "$branch"
+  git -C "$cache" checkout --quiet --detach "$commit" 2>/dev/null \
+    || { echo "ERROR: pinned commec_gui commit $commit not reachable on origin/$branch" >&2; exit 1; }
+  mkdir -p "$dest"
+  find "$cache/gui" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  rsync -a --delete --exclude='.gitkeep' "$cache/gui/" "$dest/"
+  echo "guisrc <- $(basename "$url") @ ${commit:0:8} ($(find "$dest" -type f ! -name .gitkeep | wc -l) files)"
+}
+
 echo "== 1. pinned inputs =="
 DEB_FILE=$(pin "['debian_cloud_image']['file']")
 fetch_verify "$(pin "['debian_cloud_image']['url']")" "$DOWNLOADS/$DEB_FILE" sha512 "$(pin "['debian_cloud_image']['sha512']")"
 MC_FILE=$(pin "['miniconda']['file']")
 fetch_verify "$(pin "['miniconda']['url']")" "$DOWNLOADS/$MC_FILE" sha256 "$(pin "['miniconda']['sha256']")"
+
+# GUI tree from the pinned gui branch (populates packer/guisrc).
+fetch_gui
 
 # DB source: by default STAGING is a local dir of *.zst (a mount, or pre-staged). For CI
 # / the future Cloudflare R2 bucket, set DB_BASE_URL to fetch the pinned main-DB tarballs
