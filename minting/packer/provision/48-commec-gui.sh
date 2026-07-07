@@ -35,7 +35,6 @@ cat > "$GUI/.env" <<EOF
 COMMEC_CONDA_ENV="/opt/commec/current-env"   # the A/B symlink, so updates take effect
 COMMEC_DB_DIR="$DBDIR"
 COMMEC_GUI_PORT="443"
-COMMEC_GUI_FULLSCREEN="1"                     # soft fullscreen on first gesture (once wired upstream)
 COMMEC_GUI_PASSWORD_FILE="$KHOME/.config/commec-gui/password.hash"
 # HTTPS via mkcert (--tls-auto). Set COMMEC_TLS=0 for plain HTTP.
 EOF
@@ -143,8 +142,8 @@ EOF
 cat > /usr/local/bin/commec-kiosk-launch.sh <<'EOF'
 #!/usr/bin/env bash
 # Open the local kiosk browser, but only AFTER first-boot setup + password are done (so it never
-# covers the setup-wait / password dialogs) and the server is answering. The page fullscreens
-# itself on first gesture (COMMEC_GUI_FULLSCREEN).
+# covers the setup-wait / password dialogs) and the server is answering. It opens windowed; the
+# operator chooses fullscreen via the in-page header button (no auto-fullscreen).
 set -u
 URL="https://localhost:443/"
 PROFILE="commec-kiosk"
