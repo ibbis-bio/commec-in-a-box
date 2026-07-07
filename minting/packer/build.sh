@@ -57,13 +57,18 @@ fetch_verify() { # url  outpath  algo  expected_hash
 # Mirror the pinned commec GUI tree (the repo's gui/ dir) into packer/guisrc, which the packer
 # file provisioner then bakes into the image. The gui branch AT THE PINNED COMMIT is the single
 # source of truth; guisrc is a build artifact (gitignored), regenerated every build so a stale
-# hand-edit can't silently drift from the branch. Bump commec_gui.commit in pins.json to update.
+# hand-edit can't silently drift from the branch. Bump commec.gui_shim.commit in pins.json to update.
 # Uses SSH (git@github.com:...) -> relies on the caller's git/SSH auth; a CI runner needs a deploy key.
+#
+# THIS IS THE GUI SHIM. It exists only because gui/ isn't in a commec release yet. Removal, once
+# gui merges to main and ships in the pinned commec version: delete this function + its call below,
+# delete packer/guisrc/ and its file provisioner in commec-box.pkr.hcl, drop commec.gui_shim from
+# pins.json, and have 48-commec-gui.sh copy gui/ out of the installed package instead of /tmp/guisrc.
 fetch_gui() {
   local url branch commit cache dest
-  url=$(pin "['commec_gui']['url']")
-  branch=$(pin "['commec_gui']['branch']")
-  commit=$(pin "['commec_gui']['commit']")
+  url=$(pin "['commec']['repo']")
+  branch=$(pin "['commec']['gui_shim']['branch']")
+  commit=$(pin "['commec']['gui_shim']['commit']")
   cache="$WORK/commec-gui-src"
   dest="$HERE/guisrc"
   if [ ! -d "$cache/.git" ]; then

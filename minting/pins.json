@@ -18,18 +18,17 @@
   },
 
   "commec": {
-    "_comment": "Bioconda package. A full conda lockfile is generated into packer/commec.lock at build time for true reproducibility (pinning the version alone does not lock the solve).",
+    "_comment": "The commec project (repo common-mechanism). Runtime installs from the bioconda release below; a full conda lockfile is generated into packer/commec.lock at build time for true reproducibility (pinning the version alone does not lock the solve). The kiosk GUI is overlaid via gui_shim until it ships in a release.",
+    "repo": "git@github.com:ibbis-bio/common-mechanism.git",
     "version": "1.0.5",
     "channels": ["conda-forge", "bioconda"],
     "install": "conda install -c conda-forge -c bioconda commec=1.0.5",
-    "python": ">=3.10"
-  },
-
-  "commec_gui": {
-    "_comment": "The kiosk GUI tree (the repo's gui/ dir) fetched from common-mechanism at a pinned commit and mirrored into packer/guisrc/ by build.sh - the branch is the single source of truth (no more hand-staged copy). Bump 'commit' to pull GUI updates; switch 'branch' to main after the gui->develop->main merge. Retires entirely once gui/ ships inside the commec conda package.",
-    "url": "git@github.com:ibbis-bio/common-mechanism.git",
-    "branch": "gui",
-    "commit": "119d3b3740aabac43d43d94c904bfb0e60142fd7"
+    "python": ">=3.10",
+    "gui_shim": {
+      "_comment": "TEMPORARY SHIM. The kiosk GUI (the repo's gui/ dir) is not yet in a commec release, so build.sh fetches it from the pinned gui branch of the SAME repo and mirrors it into packer/guisrc/ (a gitignored build artifact - the branch is the single source of truth). Bump 'commit' to pull GUI updates. Delete this whole object once gui merges to main and ships inside the version above; the GUI then loads from the installed package (see the removal recipe in build.sh's fetch_gui).",
+      "branch": "gui",
+      "commit": "119d3b3740aabac43d43d94c904bfb0e60142fd7"
+    }
   },
 
   "commec_small_dbs": {
