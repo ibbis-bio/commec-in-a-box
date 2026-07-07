@@ -26,7 +26,7 @@ apt-get install -y --no-install-recommends \
   xorg xfce4 xfce4-goodies lightdm \
   conky-all x11-xserver-utils xfconf dbus-x11 \
   network-manager-gnome \
-  firmware-amd-graphics firmware-iwlwifi firmware-misc-nonfree
+  firmware-amd-graphics firmware-iwlwifi firmware-realtek firmware-mediatek firmware-misc-nonfree
 
 # No auto-lock / no locker (xfce4-goodies may pull these in).
 apt-get purge -y light-locker xfce4-screensaver 2>/dev/null || true

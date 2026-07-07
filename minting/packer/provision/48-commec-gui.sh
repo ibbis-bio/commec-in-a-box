@@ -159,6 +159,21 @@ while [ ! -e /var/lib/commec/firstboot.done ] || [ ! -e /var/lib/commec/password
 if [ ! -d "$PROFILE_DIR" ]; then
   firefox-esr -CreateProfile "$PROFILE $PROFILE_DIR" >/dev/null 2>&1 || true
 fi
+# Kiosk hygiene: suppress Firefox's first-run / data-collection ("Privacy Notice") tabs so the
+# operator lands straight on the GUI. Profile-scoped prefs are more reliable than enterprise
+# policy for these onboarding tabs (the policies.json OverrideFirstRunPage doesn't cover them).
+if [ -d "$PROFILE_DIR" ]; then
+  cat > "$PROFILE_DIR/user.js" <<'PREFS'
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
+user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.startup.homepage_override.mstone", "ignore");
+user_pref("startup.homepage_welcome_url", "");
+user_pref("startup.homepage_welcome_url.additional", "");
+user_pref("browser.messaging-system.whatsNewPanel.enabled", false);
+user_pref("browser.shell.checkDefaultBrowser", false);
+PREFS
+fi
 # Trust the per-device mkcert CA in THIS profile so the mkcert-issued server cert (gen-cert.sh,
 # same CAROOT) validates with no browser warning. `mkcert -install` targets Firefox's *default*
 # profile and needs an already-initialized cert db, so it misses our fresh dedicated profile;
