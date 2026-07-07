@@ -111,7 +111,6 @@ cat <<BANNER
      Installing onto this computer.
 
      Restoring the appliance system and databases to the internal disk.
-     This one-time step takes about 15 to 30 minutes.
 
      >>>   Do NOT power off.   <<<
 
