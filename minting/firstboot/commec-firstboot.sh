@@ -90,7 +90,17 @@ if [ -f "$BUNDLE" ]; then
     echo "ERROR: failed to unpack taxonomy.tar.zst"; exit 1
   fi
 else
-  echo "  MISSING $BUNDLE - skipping DB unpack"
+  # Fail LOUD instead of silently booting a half-provisioned (biorisk-only) box: a missing
+  # bundle means the image/flash is incomplete. Exit before the guard is set so first-boot
+  # re-runs (and the GUI never comes up) rather than presenting a quietly degraded appliance.
+  cat <<EOF >&2
+########################################################################
+#  FATAL: the screening database bundle is missing from this image.    #
+#  Expected: $BUNDLE
+#  This deployment is incomplete - re-flash from a known-good stick.    #
+########################################################################
+EOF
+  exit 1
 fi
 chown -R commec-user:commec-user "$DBROOT"
 rmdir "$STAGING" 2>/dev/null || true
