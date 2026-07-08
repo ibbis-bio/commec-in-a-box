@@ -207,4 +207,34 @@ NoDisplay=true
 EOF
 chown -R "$KUSER:$KUSER" "$KHOME/.config"
 
+# --- desktop "reopen the console" launcher (for when the operator closes the browser) ---
+# A big, obvious desktop icon that relaunches the kiosk browser at the screening console.
+# Reuses the standard kiosk launcher; the guard makes it a no-op if the browser is still up
+# (so a stray double-click can't trip Firefox's --no-remote "already running" error).
+cat > /usr/local/bin/commec-kiosk-open.sh <<'EOF'
+#!/usr/bin/env bash
+# Reopen the screening console. No-op if the kiosk browser is already running.
+if pgrep -f 'firefox-esr.*commec-kiosk' >/dev/null 2>&1; then
+  exit 0
+fi
+exec /usr/local/bin/commec-kiosk-launch.sh
+EOF
+chmod 0755 /usr/local/bin/commec-kiosk-open.sh
+
+install -d "$KHOME/Desktop"
+cat > "$KHOME/Desktop/commec-open-screening.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Open Commec Screening
+Comment=Reopen the screening console if the window was closed
+Exec=/usr/local/bin/commec-kiosk-open.sh
+Icon=firefox-esr
+Terminal=false
+Categories=Application;
+EOF
+# Executable so xfdesktop launches it on double-click without the "untrusted launcher" prompt.
+chmod 0755 "$KHOME/Desktop/commec-open-screening.desktop"
+chown -R "$KUSER:$KUSER" "$KHOME/Desktop"
+
 echo "48-commec-gui done"

@@ -80,6 +80,10 @@ for kv in dpms-enabled:bool:false blank-on-ac:int:0 dpms-on-ac-sleep:int:0 dpms-
   p=${kv%%:*}; rest=${kv#*:}; t=${rest%%:*}; v=${rest#*:}
   xfconf-query -c xfce4-power-manager -p "/xfce4-power-manager/$p" -n -t "$t" -s "$v" 2>/dev/null || true
 done
+# large desktop icons (default 48px -> 96px): make the "Open Commec Screening" relaunch
+# icon a big, easy target for walk-up operators.
+xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size -n -t uint -s 96 2>/dev/null \
+  || xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size -s 96 2>/dev/null || true
 EOF
 chmod 0755 /usr/local/bin/commec-desktop-setup.sh
 
