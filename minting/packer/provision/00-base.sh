@@ -38,6 +38,13 @@ update-grub
 # and without it NM cannot operate ANY WiFi radio (the device shows "unavailable"). Add it
 # explicitly so WiFi works on the metal box.
 apt-get install -y --no-install-recommends network-manager wpasupplicant rfkill iw
+
+# --- locales: worldwide deployment -> ship ALL precompiled locales so any operator region or
+# forwarded SSH LC_* resolves with no "setlocale: cannot change locale" warning, and the box
+# needs no per-locale regeneration. locales-all is the full archive (~200MB); locales provides
+# update-locale for the default. ---
+apt-get install -y --no-install-recommends locales locales-all
+update-locale LANG=en_US.UTF-8
 mkdir -p /etc/NetworkManager/conf.d
 printf '[main]\nplugins=keyfile\n' >/etc/NetworkManager/conf.d/10-plugins.conf
 # Remove cloud per-iface configs and stop cloud-init from rewriting netcfg next boot.
