@@ -49,8 +49,12 @@ db = cfg.setdefault("databases", {})
 db.setdefault("regulated_protein", {}).setdefault("blast", {})["path"] = "{default}taxonomy/protein/prot"
 db.setdefault("regulated_nt", {})["path"] = "{default}taxonomy/nucleotide/nucl"
 db.setdefault("taxonomy", {})["path"] = "{default}taxonomy/ncbi_taxonomy/"
+# BLAST threading for this appliance: mt_mode=0 (auto) beats the shipped default of 1
+# (split-by-database) on a single fast local SSD. Set at the CONFIG level so EVERY run - CLI
+# `commec screen` or GUI - uses it, not just the GUI presets. Upstream default stays 1.
+cfg["blast_mt_mode"] = 0
 p.write_text(yaml.safe_dump(cfg, sort_keys=False))
-print("patched base_paths.default + bundled-DB paths ->", dbdir, "in", p)
+print("patched base_paths.default + bundled-DB paths + blast_mt_mode=0 ->", dbdir, "in", p)
 PY
 
 chown -R commec-user:commec-user /home/commec-user/commec-dbs

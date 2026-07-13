@@ -39,7 +39,8 @@ COMMEC_GUI_PASSWORD_FILE="$KHOME/.config/commec-gui/password.hash"
 # HTTPS via mkcert (--tls-auto). Set COMMEC_TLS=0 for plain HTTP.
 EOF
 
-# --- presets.yaml (blast_mt_mode: 0 = fast local disk, per deploy-notes) ---
+# --- presets.yaml (mt_mode is NOT set here: 30-commec-setup.sh bakes blast_mt_mode=0 into the
+# commec config so it applies to every run - CLI and GUI - not just these presets) ---
 cat > "$GUI/presets.yaml" <<'EOF'
 presets:
   - id: biorisk
@@ -49,7 +50,6 @@ presets:
       skip_taxonomy_search: true
       skip_nt_search: true
       protein_search_tool: blastx
-      blast_mt_mode: 0
   - id: full
     label: Full screen
     recommended: true
@@ -57,7 +57,6 @@ presets:
       skip_taxonomy_search: false
       skip_nt_search: false
       protein_search_tool: blastx
-      blast_mt_mode: 0
 EOF
 
 chown -R "$KUSER:$KUSER" "$GUI"

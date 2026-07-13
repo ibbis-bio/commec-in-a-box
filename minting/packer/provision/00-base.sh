@@ -45,6 +45,43 @@ apt-get install -y --no-install-recommends network-manager wpasupplicant rfkill 
 # update-locale for the default. ---
 apt-get install -y --no-install-recommends locales locales-all
 update-locale LANG=en_US.UTF-8
+
+# --- CPU governor: dedicated mains-powered screening box -> pin 'performance' for max BLAST/diamond/
+# hmmscan clocks (no ramp-up latency, no downclock under bursty load). These boxes run the
+# amd-pstate-epp driver (active mode: only 'performance'/'powersave' governors exposed), where
+# 'performance' pins max EPP. Overridable at build time via CPU_GOVERNOR (e.g. =powersave) - but note
+# that on amd-pstate-epp the governor is a COARSE knob: 'powersave' still boosts to max under
+# sustained all-core load (it defers to the EPP hint), so it is NOT a reliable thermal cap. If a unit
+# proves thermally marginal, the effective lever is scaling_max_freq (a frequency ceiling) or a lower
+# EPP, not the governor name. A boot-time oneshot writes it for every CPU - no cpupower package. ---
+GOV="${CPU_GOVERNOR:-performance}"
+cat > /etc/systemd/system/commec-cpu-governor.service <<EOF
+[Unit]
+Description=Pin CPU frequency governor to ${GOV} (screening appliance)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do [ -w "\$g" ] && echo ${GOV} > "\$g"; done'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable commec-cpu-governor.service
+
+# --- Never suspend: a screening run is a long headless CPU job with no keyboard/mouse/GUI activity,
+# and logind/desktop idle detection is session-based (NOT load-based), so the box would otherwise
+# idle-suspend MID-SCREEN (observed during stress testing: box dropped off the network under full
+# load). Mask every sleep target so nothing - logind, the XFCE power manager, or a stray
+# `systemctl suspend` - can put a screening box to sleep. ---
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+mkdir -p /etc/systemd/logind.conf.d
+cat > /etc/systemd/logind.conf.d/10-commec-no-idle.conf <<'EOF'
+[Login]
+IdleAction=ignore
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+EOF
 mkdir -p /etc/NetworkManager/conf.d
 printf '[main]\nplugins=keyfile\n' >/etc/NetworkManager/conf.d/10-plugins.conf
 # Remove cloud per-iface configs and stop cloud-init from rewriting netcfg next boot.
