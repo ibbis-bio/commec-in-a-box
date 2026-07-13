@@ -31,7 +31,7 @@ https://conda.anaconda.org/conda-forge/linux-64/ncurses-6.6-hdb14827_0.conda
 https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.3-h35e630c_0.conda
 https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
 https://conda.anaconda.org/conda-forge/linux-64/yaml-0.2.5-h280c20c_3.conda
-https://conda.anaconda.org/bioconda/linux-64/diamond-2.2.3-he361c42_0.conda
+https://conda.anaconda.org/bioconda/linux-64/diamond-2.2.4-he361c42_0.conda
 https://conda.anaconda.org/conda-forge/linux-64/icu-78.3-h33c6efd_0.conda
 https://conda.anaconda.org/conda-forge/linux-64/libedit-3.1.20250104-pl5321h7949ede_0.conda
 https://conda.anaconda.org/conda-forge/linux-64/libev-4.33-hd590300_2.conda
@@ -48,7 +48,7 @@ https://conda.anaconda.org/conda-forge/linux-64/libgfortran-ng-15.2.0-h69a702a_1
 https://conda.anaconda.org/conda-forge/linux-64/libidn2-2.3.8-hfac485b_1.conda
 https://conda.anaconda.org/conda-forge/linux-64/libnghttp2-1.68.1-h877daf1_0.conda
 https://conda.anaconda.org/conda-forge/linux-64/libopenblas-0.3.33-pthreads_h94d23a6_0.conda
-https://conda.anaconda.org/conda-forge/linux-64/libpsl-0.22.0-hd9031aa_0.conda
+https://conda.anaconda.org/conda-forge/linux-64/libpsl-0.22.0-h49b2146_1.conda
 https://conda.anaconda.org/conda-forge/linux-64/perl-5.32.1-7_hd590300_perl5.conda
 https://conda.anaconda.org/conda-forge/linux-64/python-3.14.6-habeac84_100_cp314.conda
 https://conda.anaconda.org/conda-forge/noarch/blinker-1.9.0-pyhff2d567_0.conda
@@ -60,7 +60,7 @@ https://conda.anaconda.org/conda-forge/noarch/itsdangerous-2.2.0-pyhd8ed1ab_1.co
 https://conda.anaconda.org/conda-forge/linux-64/libblas-3.11.0-8_h4a7cf45_openblas.conda
 https://conda.anaconda.org/conda-forge/linux-64/libcurl-8.21.0-hae6b9f4_2.conda
 https://conda.anaconda.org/conda-forge/linux-64/markupsafe-3.0.3-py314h67df5f8_1.conda
-https://conda.anaconda.org/conda-forge/noarch/narwhals-2.23.0-pyhcf101f3_0.conda
+https://conda.anaconda.org/conda-forge/noarch/narwhals-2.24.0-pyhcf101f3_0.conda
 https://conda.anaconda.org/conda-forge/linux-64/openmpi-4.1.6-hc5af2df_101.conda
 https://conda.anaconda.org/conda-forge/noarch/packaging-26.2-pyhc364b38_0.conda
 https://conda.anaconda.org/conda-forge/noarch/perl-common-sense-3.75-pl5321hd8ed1ab_0.tar.bz2
