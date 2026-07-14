@@ -46,28 +46,57 @@ apt-get install -y --no-install-recommends network-manager wpasupplicant rfkill 
 apt-get install -y --no-install-recommends locales locales-all
 update-locale LANG=en_US.UTF-8
 
-# --- CPU governor: dedicated mains-powered screening box -> pin 'performance' for max BLAST/diamond/
-# hmmscan clocks (no ramp-up latency, no downclock under bursty load). These boxes run the
-# amd-pstate-epp driver (active mode: only 'performance'/'powersave' governors exposed), where
-# 'performance' pins max EPP. Overridable at build time via CPU_GOVERNOR (e.g. =powersave) - but note
-# that on amd-pstate-epp the governor is a COARSE knob: 'powersave' still boosts to max under
-# sustained all-core load (it defers to the EPP hint), so it is NOT a reliable thermal cap. If a unit
-# proves thermally marginal, the effective lever is scaling_max_freq (a frequency ceiling) or a lower
-# EPP, not the governor name. A boot-time oneshot writes it for every CPU - no cpupower package. ---
+# --- CPU governor + power-safety CLOCK CAP (boot-time oneshot; no cpupower package) ---
+# GOVERNOR: dedicated mains box -> 'performance' (max clocks, no ramp latency). amd-pstate-epp active
+# mode exposes only performance/powersave; 'performance' pins max EPP. Override: CPU_GOVERNOR=powersave.
+#
+# *****************************************************************************************************
+# *** CLOCK CAP (CPU_MAXFREQ_KHZ) - HARDWARE-DEPENDENT POWER-STABILITY MITIGATION - READ BEFORE SHIP ***
+# *****************************************************************************************************
+# The target ThinkCentre M75q Gen2 (Ryzen 5 PRO 5650GE) on its STOCK 65W slim-tip brick is
+# power-marginal: under sustained all-core load the SoC draws ~58W (~89% of the 65W brick's rating),
+# and in testing BOTH units hard-power-off intermittently (abrupt, NO thermal/MCE/shutdown log; temps
+# stay ~76C safe -> it's a POWER brownout, not heat). Capping the max CPU frequency lowers peak draw
+# back under the brick's ceiling and prevented the crashes in testing.
+#   Default 3000000 kHz (3.0 GHz) -> ~2.64 GHz effective all-core -> ~0.72x throughput
+#   (~85k -> ~61k seq/day; still ~12x over the 5k/day target, so this spends headroom we don't need).
+#
+#   >>> THIS CAP IS SPECIFIC TO THIS CPU + THIS 65W BRICK. Different hardware needs a different (or no) cap. <<<
+#   Disable entirely (full boost):   build with CPU_MAXFREQ_KHZ=0   (or ='')
+#   Change the ceiling:              build with CPU_MAXFREQ_KHZ=3500000  (higher = more throughput,
+#                                    LESS power margin -> RE-TEST stability under sustained load if you raise it)
+#   Preferred hardware fix:          fit a 90W brick, then disable the cap (CPU_MAXFREQ_KHZ=0). The cap is
+#                                    the no-hardware-change option; the 90W brick is the supply-side option.
+# See aws/box/power-failure-log.md for the full investigation + data.
+# *****************************************************************************************************
 GOV="${CPU_GOVERNOR:-performance}"
-cat > /etc/systemd/system/commec-cpu-governor.service <<EOF
+MAXFREQ="${CPU_MAXFREQ_KHZ-3000000}"   # ${var-default}: UNSET -> 3.0GHz cap; set to 0 or '' -> disabled
+cat > /usr/local/sbin/commec-cpu-tune <<EOF
+#!/bin/sh
+# Baked at mint time by 00-base.sh. Pin governor + optional max-freq cap on every CPU.
+GOV=${GOV}
+MAXFREQ=${MAXFREQ}
+EOF
+cat >> /usr/local/sbin/commec-cpu-tune <<'EOF'
+for c in /sys/devices/system/cpu/cpu*/cpufreq; do
+  [ -w "$c/scaling_governor" ] && echo "$GOV" > "$c/scaling_governor"
+  [ -n "$MAXFREQ" ] && [ "$MAXFREQ" != "0" ] && [ -w "$c/scaling_max_freq" ] && echo "$MAXFREQ" > "$c/scaling_max_freq"
+done
+EOF
+chmod +x /usr/local/sbin/commec-cpu-tune
+cat > /etc/systemd/system/commec-cpu-tune.service <<EOF
 [Unit]
-Description=Pin CPU frequency governor to ${GOV} (screening appliance)
+Description=Pin CPU governor ${GOV} + max-freq cap ${MAXFREQ:-none}kHz (screening appliance power safety)
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do [ -w "\$g" ] && echo ${GOV} > "\$g"; done'
+ExecStart=/usr/local/sbin/commec-cpu-tune
 
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl enable commec-cpu-governor.service
+systemctl enable commec-cpu-tune.service
 
 # --- Never suspend: a screening run is a long headless CPU job with no keyboard/mouse/GUI activity,
 # and logind/desktop idle detection is session-based (NOT load-based), so the box would otherwise
