@@ -55,6 +55,27 @@ minting/
    (nominal 128 GB media; the disk image is sized ~90G to fit real "128 GB" sticks).
 5. **Test**: VM (qemu, blank 512 GB disk) then metal (ThinkCentre M75q Gen 2).
 
+## Hardware power tuning (IMPORTANT - hardware-dependent, set in `provision/00-base.sh`)
+
+The appliance ships three power/stability settings baked into the image. **The clock cap is
+tied to the specific CPU + power brick** - re-evaluate it for any other hardware.
+
+| Setting | Default | Flag (build-time env) | Why |
+|---|---|---|---|
+| CPU governor | `performance` | `CPU_GOVERNOR` | max clocks for screening (amd-pstate-epp: performance/powersave only) |
+| **Max-freq CLOCK CAP** | **3.0 GHz** (`3000000` kHz) | **`CPU_MAXFREQ_KHZ`** (`0`/`''` disables) | **65W-brick POWER SAFETY - see below** |
+| Never suspend | masked | (none) | a headless screen has no GUI activity -> box would idle-suspend mid-run |
+
+**The clock cap - read before shipping on other hardware:** the ThinkCentre M75q Gen 2 on its
+stock **65 W** slim-tip brick is power-marginal. Under sustained all-core load the SoC draws ~58 W
+(~89% of the brick), and in testing **both units intermittently hard-power-off** - abrupt, with
+**no thermal/MCE/shutdown log and safe temps (~76 C)**, i.e. a power brownout, not heat. Capping
+max frequency to 3.0 GHz (~2.64 GHz effective all-core, ~0.72x throughput -> ~61k seq/day, still
+~12x over the 5k/day target) pulls peak draw back under the brick's ceiling and prevented the
+crashes. **This is specific to this CPU + this 65 W brick.** Alternatives: fit a **90 W brick** and
+disable the cap (`CPU_MAXFREQ_KHZ=0`), or raise the ceiling and re-test stability. Full data +
+investigation: `aws/box/power-failure-log.md`.
+
 ## Host (mintbox) prerequisites
 
 - KVM access: user in `kvm` group.
