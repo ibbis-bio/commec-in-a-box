@@ -84,6 +84,83 @@ fetch_gui() {
   echo "guisrc <- $(basename "$url") @ ${commit:0:8} ($(find "$dest" -type f ! -name .gitkeep | wc -l) files)"
 }
 
+# Plant a colophon (build-provenance note) into the image so a deployed box can answer "what
+# exactly was I built from?" (reproducibility for testing / graphs). Captures the
+# commec-in-a-box commit AND working-tree dirtiness -- critical because mints are sometimes
+# built from an uncommitted tree (e.g. a pins.json bump made seconds before the build), so
+# HEAD alone can be a lie. When dirty, the full `git diff HEAD` is saved too, so the exact
+# built state is reconstructable. Output goes to packer/colophon/ (a gitignored build
+# artifact); the packer file provisioner uploads it and 98-colophon.sh installs it to
+# /etc/commec-colophon/ in the guest.
+# DEB_FILE, MC_FILE, and the gui pins must already be resolved (call after fetch_gui).
+write_colophon() {
+  local dir="$HERE/colophon"
+  mkdir -p "$dir"
+  find "$dir" -mindepth 1 ! -name .gitkeep -delete 2>/dev/null || true
+  cp "$PINS" "$dir/pins.json"
+
+  local head subject describe dirty status
+  head=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)
+  subject=$(git -C "$REPO" log -1 --format=%s 2>/dev/null || echo unknown)
+  describe=$(git -C "$REPO" describe --always --tags --dirty 2>/dev/null || echo unknown)
+  status=$(git -C "$REPO" status --porcelain 2>/dev/null || true)
+  if [ -n "$status" ]; then dirty=true; else dirty=false; fi
+  if [ "$dirty" = true ]; then
+    printf '%s\n' "$status" > "$dir/git-status.txt"
+    git -C "$REPO" diff HEAD > "$dir/uncommitted.diff" 2>/dev/null || true
+  fi
+
+  local gui_repo gui_branch gui_commit built_at built_by
+  gui_repo=$(pin "['commec']['repo']")
+  gui_branch=$(pin "['commec']['gui_shim']['branch']")
+  gui_commit=$(pin "['commec']['gui_shim']['commit']")
+  built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  built_by="$(id -un)@$(hostname)"
+
+  IAB_COMMIT="$head" IAB_SUBJECT="$subject" IAB_DESCRIBE="$describe" IAB_DIRTY="$dirty" \
+  BUILT_AT="$built_at" BUILT_BY="$built_by" \
+  GUI_REPO="$gui_repo" GUI_BRANCH="$gui_branch" GUI_COMMIT="$gui_commit" \
+  V_COMMEC="$(pin "['commec']['version']")" \
+  V_SOURCE="${COMMEC_SOURCE:-stable}" V_CHANNEL="${COMMEC_CHANNEL:-stable}" \
+  V_GUI="${COMMEC_GUI_VERSION:-1.0.6.dev1}" V_UPDATE_URL="${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}" \
+  BASE_IMAGE="$DEB_FILE" MINICONDA="$MC_FILE" \
+  python3 - "$dir/colophon.json" <<'PY'
+import json, os, sys
+m = {
+    "schema": 1,
+    "built_at_utc": os.environ["BUILT_AT"],
+    "built_by": os.environ["BUILT_BY"],
+    "commec_in_a_box": {
+        "commit": os.environ["IAB_COMMIT"],
+        "commit_subject": os.environ["IAB_SUBJECT"],
+        "describe": os.environ["IAB_DESCRIBE"],
+        "dirty": os.environ["IAB_DIRTY"] == "true",
+    },
+    "gui_shim": {
+        "repo": os.environ["GUI_REPO"],
+        "branch": os.environ["GUI_BRANCH"],
+        "commit": os.environ["GUI_COMMIT"],
+    },
+    "build_vars": {
+        "commec_version": os.environ["V_COMMEC"],
+        "commec_source": os.environ["V_SOURCE"],
+        "commec_channel": os.environ["V_CHANNEL"],
+        "commec_gui_version": os.environ["V_GUI"],
+        "commec_update_url": os.environ["V_UPDATE_URL"],
+    },
+    "inputs": {
+        "base_image": os.environ["BASE_IMAGE"],
+        "miniconda": os.environ["MINICONDA"],
+    },
+    "note": "commec.lock (exact package versions) sits alongside this colophon, added in-guest at build.",
+}
+with open(sys.argv[1], "w") as f:
+    json.dump(m, f, indent=2)
+    f.write("\n")
+PY
+  echo "colophon <- commec-in-a-box @ ${head:0:8}$([ "$dirty" = true ] && echo ' (DIRTY)'); gui @ ${gui_commit:0:8}"
+}
+
 echo "== 1. pinned inputs =="
 DEB_FILE=$(pin "['debian_cloud_image']['file']")
 fetch_verify "$(pin "['debian_cloud_image']['url']")" "$DOWNLOADS/$DEB_FILE" sha512 "$(pin "['debian_cloud_image']['sha512']")"
@@ -92,6 +169,9 @@ fetch_verify "$(pin "['miniconda']['url']")" "$DOWNLOADS/$MC_FILE" sha256 "$(pin
 
 # GUI tree from the pinned gui branch (populates packer/guisrc).
 fetch_gui
+
+# Build-provenance colophon (populates packer/colophon; installed to /etc/commec-colophon in the guest).
+write_colophon
 
 # DB source: by default STAGING is a local dir of *.zst (a mount, or pre-staged). For CI
 # / the future Cloudflare R2 bucket, set DB_BASE_URL to fetch the pinned main-DB tarballs

@@ -145,6 +145,13 @@ build {
     source      = "${path.root}/guisrc"
     destination = "/tmp"
   }
+
+  # build-provenance colophon (commit, dirty diff, pins). Written by build.sh's write_colophon;
+  # installed to /etc/commec-colophon by 98-colophon.sh.
+  provisioner "file" {
+    source      = "${path.root}/colophon"
+    destination = "/tmp"
+  }
   # uploads <wallpaper_dir> as /tmp/wallpaper (basename of the dir is "wallpaper")
   provisioner "file" {
     source      = var.wallpaper_dir
@@ -178,6 +185,7 @@ build {
       "${path.root}/provision/48-commec-gui.sh",
       "${path.root}/provision/50-stage-dbs.sh",
       "${path.root}/provision/90-firstboot-install.sh",
+      "${path.root}/provision/98-colophon.sh",
       "${path.root}/provision/99-cleanup.sh",
     ]
   }
