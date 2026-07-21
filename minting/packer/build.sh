@@ -24,13 +24,12 @@ MINTING=$(cd "$HERE/.." && pwd)
 REPO=$(cd "$MINTING/.." && pwd)
 PINS="$MINTING/pins.json"
 
-# Locations. The DB disk image and qcow2 output MUST live on a sparse-capable, fast
-# fs (nvme/ext4), NOT on the COMMEC external: it's exfat, which has no sparse files, so
-# truncate+mkfs would physically write the whole image over USB (very slow). COMMEC is
-# only the source of the .zst tarballs.
+# Locations. The DB disk image, qcow2 output, and DB staging MUST live on a sparse-capable,
+# fast fs (nvme/ext4): truncate+mkfs and the ~6.5 GiB best_match download are all slow on a
+# USB/exfat external, and exfat has no sparse files.
 WORK="${WORK:-$HOME/commec-build}"            # on nvme (ext4)
 DOWNLOADS="${DOWNLOADS:-$MINTING/downloads}"
-STAGING="${STAGING:-/mnt/commec/dbs-staging}" # source tarballs (COMMEC/exfat)
+STAGING="${STAGING:-$WORK/dbs-staging}"       # where build.sh stages the R2-downloaded best_match
 DB_DISK="${DB_DISK:-$WORK/db-staging.img}"
 OUTPUT_DIR="${OUTPUT_DIR:-$WORK/output}"
 SECRETS="$HERE/.secrets"
@@ -192,7 +191,7 @@ fetch_gui
 # (biorisk/low_concern/control_lists) are pulled + extracted in-guest by 30-commec-setup.sh.
 DB_BASE_URL=$(pin "['commec_databases']['base_url']")
 DB_CHANNEL="${COMMEC_DB_CHANNEL:-$(pin "['commec_databases']['channel']")}"
-STAGING="${STAGING:-$WORK/dbs-staging}"; mkdir -p "$STAGING"
+mkdir -p "$STAGING"
 
 # latest.json -> {"latest": {...}, "experimental": {...}}; pick the channel's revision map, then
 # resolve every DB's revision from that one snapshot.
