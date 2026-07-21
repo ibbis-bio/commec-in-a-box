@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Patch the commec screen-default-config.yaml INSIDE a given env for this appliance:
+#   commec-patch-config <env-path> [db-dir]
+# Sets base_paths.default to the absolute DB dir, points the three DB paths at the bundled
+# taxonomy.tar.zst layout, and forces blast_mt_mode=0. Uses the TARGET env's own python/importlib
+# so it edits that env's package copy (never the base env). Idempotent - writes fixed values, so
+# re-running is a no-op-equivalent.
+#
+# Called at mint (30-commec-setup.sh) AND by commec-update-apply after each A/B `conda create`, so
+# every env - original and updated - carries the same DB paths + threading. Without this, an updated
+# env ships commec's pristine config (wrong DB paths, mt_mode=1) and screening breaks after the flip.
+set -euo pipefail
+
+ENVP="${1:?usage: commec-patch-config <env-path> [db-dir]}"
+DBDIR="${2:-/home/commec-user/commec-dbs}"
+PY="$ENVP/bin/python"
+[ -x "$PY" ] || { echo "commec-patch-config: no python in env: $ENVP" >&2; exit 1; }
+
+"$PY" - "$DBDIR" <<'PY'
+import sys, pathlib, importlib.resources, yaml
+dbdir = sys.argv[1].rstrip("/") + "/"
+p = pathlib.Path(str(importlib.resources.files("commec").joinpath("screen-default-config.yaml")))
+cfg = yaml.safe_load(p.read_text())
+# Absolute DB dir, trailing slash (paths are "{default}taxonomy/..." etc.).
+cfg.setdefault("base_paths", {})["default"] = dbdir
+# MONKEY-PATCH: point the DB paths at the bundled taxonomy.tar.zst layout
+# (taxonomy/{protein/prot, nucleotide/nucl, ncbi_taxonomy}). commec's shipped defaults still use
+# the OLD nr_blast/nr | nt_blast/core_nt | taxonomy/ paths; drop this once upstream finalizes naming.
+db = cfg.setdefault("databases", {})
+db.setdefault("regulated_protein", {}).setdefault("blast", {})["path"] = "{default}taxonomy/protein/prot"
+db.setdefault("regulated_nt", {})["path"] = "{default}taxonomy/nucleotide/nucl"
+db.setdefault("taxonomy", {})["path"] = "{default}taxonomy/ncbi_taxonomy/"
+# BLAST threading for this appliance: mt_mode=0 (auto) beats the shipped default of 1
+# (split-by-database) on a single fast local SSD. Set at the CONFIG level so EVERY run - CLI
+# `commec screen` or GUI - uses it, not just the GUI presets. Upstream default stays 1.
+cfg["blast_mt_mode"] = 0
+p.write_text(yaml.safe_dump(cfg, sort_keys=False))
+print("commec-patch-config: patched", p, "-> base_paths.default", dbdir, "+ bundled-DB paths + blast_mt_mode=0")
+PY

@@ -91,6 +91,7 @@ chmod 0755 /usr/local/bin/commec-desktop-setup.sh
 install -m 0755 /tmp/assets/commec-conky-net.sh /usr/local/bin/commec-conky-net
 install -m 0755 /tmp/assets/commec-conky-temp.sh /usr/local/bin/commec-conky-temp
 install -m 0755 /tmp/assets/commec-conky-power.sh /usr/local/bin/commec-conky-power
+install -m 0755 /tmp/assets/commec-conky-update.sh /usr/local/bin/commec-conky-update
 install -d "$USER_HOME/.config/conky"
 install -m 0644 /tmp/assets/conky.conf "$USER_HOME/.config/conky/conky.conf"
 

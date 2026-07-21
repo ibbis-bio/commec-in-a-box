@@ -10,6 +10,11 @@ set -euxo pipefail
 
 DBDIR=/home/commec-user/commec-dbs
 
+# The appliance config patch is a shared tool (mint + runtime updates both apply it); install it
+# now so this script and commec-update-apply call the same code. /tmp/update is staged by packer
+# before any shell provisioner runs.
+install -m 0755 /tmp/update/commec-patch-config /usr/local/sbin/commec-patch-config
+
 cat > /tmp/run-commec-setup.sh <<'INNER'
 set -euo pipefail
 cd "$HOME"
@@ -34,28 +39,9 @@ INNER
 sudo -u commec-user env "BIORISK_URL=$BIORISK_URL" HOME=/home/commec-user bash /tmp/run-commec-setup.sh
 rm -f /tmp/run-commec-setup.sh
 
-# Patch the installed package default config: set base_paths.default to the absolute
-# DB dir (with trailing slash, since paths are "{default}nr_blast/nr" etc.).
-/opt/miniconda/envs/commec-env/bin/python - "$DBDIR" <<'PY'
-import sys, pathlib, importlib.resources, yaml
-dbdir = sys.argv[1].rstrip("/") + "/"
-p = pathlib.Path(str(importlib.resources.files("commec").joinpath("screen-default-config.yaml")))
-cfg = yaml.safe_load(p.read_text())
-cfg.setdefault("base_paths", {})["default"] = dbdir
-# MONKEY-PATCH: point the DB paths at the bundled taxonomy.tar.zst layout
-# (taxonomy/{protein/prot, nucleotide/nucl, ncbi_taxonomy}). commec's shipped defaults still use
-# the OLD nr_blast/nr | nt_blast/core_nt | taxonomy/ paths; drop this once upstream finalizes naming.
-db = cfg.setdefault("databases", {})
-db.setdefault("regulated_protein", {}).setdefault("blast", {})["path"] = "{default}taxonomy/protein/prot"
-db.setdefault("regulated_nt", {})["path"] = "{default}taxonomy/nucleotide/nucl"
-db.setdefault("taxonomy", {})["path"] = "{default}taxonomy/ncbi_taxonomy/"
-# BLAST threading for this appliance: mt_mode=0 (auto) beats the shipped default of 1
-# (split-by-database) on a single fast local SSD. Set at the CONFIG level so EVERY run - CLI
-# `commec screen` or GUI - uses it, not just the GUI presets. Upstream default stays 1.
-cfg["blast_mt_mode"] = 0
-p.write_text(yaml.safe_dump(cfg, sort_keys=False))
-print("patched base_paths.default + bundled-DB paths + blast_mt_mode=0 ->", dbdir, "in", p)
-PY
+# Patch the installed package config (base_paths.default, bundled-DB paths, blast_mt_mode=0) via
+# the shared tool, so the mint env and any future updated env are configured identically.
+/usr/local/sbin/commec-patch-config /opt/miniconda/envs/commec-env "$DBDIR"
 
 chown -R commec-user:commec-user /home/commec-user/commec-dbs
 echo "30-commec-setup done"
