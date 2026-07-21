@@ -5,7 +5,7 @@
 set -u
 GUARD=/var/lib/commec/firstboot.done
 DBROOT=/home/commec-user/commec-dbs
-TOTAL_GB=31           # approx fully-unpacked DB size (best_match ~30 GiB + the small DBs), for a rough progress estimate
+TOTAL_GB=38           # approx fully-unpacked DB size (best_match ~36 GiB + the small DBs), for a rough progress estimate
 BAR_W=34
 O=$'\033[38;5;202m'; B=$'\033[48;5;17m'; R=$'\033[0m'   # IBBIS orange fg, deep-blue bg, reset
 spin='-\|/'; i=0; start=$(date +%s); used_gb=0

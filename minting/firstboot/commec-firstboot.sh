@@ -53,7 +53,7 @@ growpart "$DISK" "$PARTNUM" || echo "  growpart: nothing to do"
 resize2fs "$ROOT_SRC" || echo "WARN: resize2fs failed"
 
 # --- 2b. pre-flight: the grown fs must fit the DB decompression ---
-# The best_match BLAST DBs decompress to ~30 GiB, and the compressed tarball (~6.5 GiB) is
+# The best_match BLAST DBs decompress to ~36 GiB, and the compressed tarball (~6.5 GiB) is
 # still present during extraction, so the target fs needs ~40 GiB free. Fail LOUDLY on a
 # too-small disk here instead of cascading into a mid-extract ENOSPC - which leaves a
 # corrupt DB, blocks the password helper (its write also hits ENOSPC), and surfaces to
