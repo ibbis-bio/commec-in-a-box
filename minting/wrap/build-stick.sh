@@ -122,7 +122,7 @@ sleep 4
 # \$rootmnt/dev/console, the open fails, and PID1 exits -> "Attempted to kill init" panic.
 # -p true = no-op postaction (do NOT auto-poweroff) so the guard below runs.
 # NO -g flag: skip the grub reinstall entirely. ocs-sr only runs ocs-install-grub when -g is
-# passed (ocs-functions: `if [ "$install_grub" = "on" ]`), so omitting -g means no grub step at
+# passed (ocs-functions: \`if [ "\$install_grub" = "on" ]\`), so omitting -g means no grub step at
 # all. partclone restores the ESP (nvme..p15) byte-for-byte with packer's bootloader incl. the
 # universal /EFI/BOOT/BOOTX64.EFI removable path, so a reinstall is redundant (and Clonezilla's
 # -g auto reinstall fails anyway: "cannot find EFI directory", it never mounts the ESP at
