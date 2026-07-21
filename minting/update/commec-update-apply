@@ -16,7 +16,7 @@ LOG=/var/log/commec-update.log
 exec >>"$LOG" 2>&1
 echo "=== commec-update-apply $(date -u +%FT%TZ) arg='${1:-}' ==="
 
-conda_channels="conda-forge,bioconda"; channel="stable"
+conda_channels="conda-forge,bioconda"; channel="stable"; db_dir="/home/commec-user/commec-dbs"
 [ -r "$CONF" ] && . "$CONF"
 
 write_release() { # <version> <env> <prev_env>
@@ -33,7 +33,8 @@ if [ "${1:-}" = "--rollback" ]; then
   ln -sfn "$prev" "$LINK"
   ver=$("$CONDA" list -p "$prev" '^commec$' --json 2>/dev/null | "$PY" -c 'import json,sys;d=json.load(sys.stdin);print(d[0]["version"] if d else "unknown")')
   write_release "$ver" "$prev" "$cur"
-  echo "=== rolled back to commec $ver ($prev) ==="; exit 0
+  systemctl restart commec-gui.service 2>/dev/null || true
+  echo "=== rolled back to commec $ver ($prev); GUI restarted ==="; exit 0
 fi
 
 ver="${1:-}"
@@ -53,6 +54,13 @@ if [ ! -x "$newenv/bin/commec" ]; then
   "$CONDA" create -y -p "$newenv" $chan_args "commec=$ver" || { echo "conda create failed"; rm -rf "$newenv"; exit 3; }
 fi
 
+# A freshly-created env ships commec's pristine screen-default-config.yaml (wrong DB paths,
+# mt_mode=1). Apply the appliance config patch BEFORE the smoke test so a patch failure aborts
+# without flipping and a mis-configured env can never go live.
+if ! /usr/local/sbin/commec-patch-config "$newenv" "$db_dir"; then
+  echo "config patch failed - not flipping"; rm -rf "$newenv"; exit 3
+fi
+
 # Smoke test before flipping - a broken env must never become current. Run it THROUGH the env
 # (conda run -p), not the bare binary: commec shells out to taxonkit et al. by bare name, so the
 # env's bin must be on PATH. The bare `$newenv/bin/commec --version` fails here because apply runs
@@ -63,4 +71,7 @@ fi
 
 ln -sfn "$newenv" "$LINK"
 write_release "$ver" "$newenv" "$prev"
-echo "=== now on commec $ver ($newenv); previous kept at $prev for rollback ==="
+# The GUI activates current-env once at process start, so it must be restarted to pick up the
+# flip (new shells get it for free via the .bashrc symlink activation).
+systemctl restart commec-gui.service 2>/dev/null || true
+echo "=== now on commec $ver ($newenv); previous kept at $prev for rollback; GUI restarted ==="

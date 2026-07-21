@@ -49,14 +49,12 @@ presets:
     config:
       skip_taxonomy_search: true
       skip_nt_search: true
-      protein_search_tool: blastx
   - id: full
     label: Full screen
     recommended: true
     config:
       skip_taxonomy_search: false
       skip_nt_search: false
-      protein_search_tool: blastx
 EOF
 
 chown -R "$KUSER:$KUSER" "$GUI"

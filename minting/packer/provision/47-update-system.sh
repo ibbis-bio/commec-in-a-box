@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install the commec update notifier + A/B env-flip machinery. Additive: leaves 20-commec.sh's
+# Install the commec update system (headless status poller + desktop-icon action) + A/B env-flip
+# machinery. Additive: leaves 20-commec.sh's
 # `commec-env` as-is and layers a stable `current-env` symlink that the shell activates, so an
 # update can flip commec versions without rewriting dotfiles. Set COMMEC_CHANNEL=devel to build
 # a devel image whose updater is pre-flipped to the devel channel.
@@ -16,8 +17,13 @@ for home in /home/commec-user /root; do
 done
 
 # --- scripts ------------------------------------------------------------------------------
+# check: writes the status token. poll: headless loop that keeps the status file fresh for the
+# conky overlay (no dialogs). now: the desktop-icon action (check + all dialogs + install). apply:
+# root A/B env-flip helper. (commec-patch-config is installed earlier by 30-commec-setup.sh, which
+# both this apply helper and the mint step call.)
 install -m 0755 /tmp/update/commec-update-check    /usr/local/bin/commec-update-check
-install -m 0755 /tmp/update/commec-update-popup.sh /usr/local/bin/commec-update-popup.sh
+install -m 0755 /tmp/update/commec-update-poll.sh  /usr/local/bin/commec-update-poll.sh
+install -m 0755 /tmp/update/commec-update-now.sh   /usr/local/bin/commec-update-now.sh
 install -m 0755 /tmp/update/commec-update-apply    /usr/local/sbin/commec-update-apply
 
 # --- config -------------------------------------------------------------------------------
@@ -53,16 +59,37 @@ EOF
 chmod 0440 /etc/sudoers.d/zzz-commec-update
 visudo -cf /etc/sudoers.d/zzz-commec-update
 
-# --- autostart the notifier (after 01-password and 10-conky) ------------------------------
+# --- autostart the headless status poller (after 01-password and 10-conky) ----------------
+# No dialogs - it only refreshes the status file the conky overlay reads. All update UI is the
+# desktop icon below.
 install -d /home/commec-user/.config/autostart
 cat >/home/commec-user/.config/autostart/30-commec-update.desktop <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Commec Update Notifier
-Exec=/usr/local/bin/commec-update-popup.sh
+Name=Commec Update Status Poller
+Exec=/usr/local/bin/commec-update-poll.sh
 X-GNOME-Autostart-enabled=true
 NoDisplay=true
 EOF
-chown -R commec-user:commec-user /home/commec-user/.config
+
+# --- desktop icon: operator-initiated check + install -------------------------------------
+# Modeled on the "Open Commec Screening" icon (48-commec-gui.sh): a ~/Desktop/*.desktop made
+# trusted by chmod 0755 so xfdesktop launches it without the "untrusted launcher" prompt. Renders
+# at the global 96px desktop-icon size. Reaches root only via the existing zzz-commec-update rule.
+install -d /home/commec-user/Desktop
+cat >/home/commec-user/Desktop/commec-check-updates.desktop <<'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Check for Commec Updates
+Comment=Check online for a newer commec and install it
+Exec=/usr/local/bin/commec-update-now.sh
+Icon=system-software-update
+Terminal=false
+Categories=Application;
+EOF
+chmod 0755 /home/commec-user/Desktop/commec-check-updates.desktop
+
+chown -R commec-user:commec-user /home/commec-user/.config /home/commec-user/Desktop
 
 echo "47-update-system done"

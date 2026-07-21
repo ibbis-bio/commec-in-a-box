@@ -54,7 +54,7 @@ fetch_verify() { # url  outpath  algo  expected_hash
   echo "verified: $(basename "$out")"
 }
 
-# Mirror the pinned commec GUI tree (the repo's gui/ dir) into packer/guisrc, which the packer
+# Mirror the pinned commec GUI tree (the repo's commec/gui/ dir) into packer/guisrc, which the packer
 # file provisioner then bakes into the image. The gui branch AT THE PINNED COMMIT is the single
 # source of truth; guisrc is a build artifact (gitignored), regenerated every build so a stale
 # hand-edit can't silently drift from the branch. Bump commec.gui_shim.commit in pins.json to update.
@@ -63,7 +63,7 @@ fetch_verify() { # url  outpath  algo  expected_hash
 # THIS IS THE GUI SHIM. It exists only because gui/ isn't in a commec release yet. Removal, once
 # gui merges to main and ships in the pinned commec version: delete this function + its call below,
 # delete packer/guisrc/ and its file provisioner in commec-box.pkr.hcl, drop commec.gui_shim from
-# pins.json, and have 48-commec-gui.sh copy gui/ out of the installed package instead of /tmp/guisrc.
+# pins.json, and have 48-commec-gui.sh copy commec/gui/ out of the installed package instead of /tmp/guisrc.
 fetch_gui() {
   local url branch commit cache dest
   url=$(pin "['commec']['repo']")
@@ -79,8 +79,8 @@ fetch_gui() {
   git -C "$cache" checkout --quiet --detach "$commit" 2>/dev/null \
     || { echo "ERROR: pinned commec_gui commit $commit not reachable on origin/$branch" >&2; exit 1; }
   mkdir -p "$dest"
-  find "$cache/gui" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
-  rsync -a --delete --exclude='.gitkeep' "$cache/gui/" "$dest/"
+  find "$cache/commec/gui" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  rsync -a --delete --exclude='.gitkeep' "$cache/commec/gui/" "$dest/"
   echo "guisrc <- $(basename "$url") @ ${commit:0:8} ($(find "$dest" -type f ! -name .gitkeep | wc -l) files)"
 }
 
@@ -173,17 +173,32 @@ fetch_gui
 # Build-provenance colophon (populates packer/colophon; installed to /etc/commec-colophon in the guest).
 write_colophon
 
-# DB source: by default STAGING is a local dir of *.zst (a mount, or pre-staged). For CI
-# / the future Cloudflare R2 bucket, set DB_BASE_URL to fetch the pinned main-DB tarballs
-# into a local staging dir instead of relying on a mount.
-if [ -n "${DB_BASE_URL:-}" ]; then
-  STAGING="${DB_STAGING_LOCAL:-$WORK/dbs-staging}"; mkdir -p "$STAGING"
-  for k in nr_blast core_nt_blast; do
-    f=$(pin "['commec_main_dbs']['$k']['archive']")
-    fetch_verify "${DB_BASE_URL%/}/$f" "$STAGING/$f" sha256 "$(pin "['commec_main_dbs']['$k']['sha256']")"
-  done
-  ( cd "$STAGING" && sha256sum ./*.zst | sed 's#\./##' > SHA256SUMS )
+# Screening databases (from commec's R2 bucket; see pins.commec_databases). We resolve the
+# current revisions live from latest.json (trust upstream versioning; no local hash pin) and
+# stage ONLY best_match here - it's the large one (~6.5 GiB compressed) and rides the DB disk
+# compressed, expanding at firstboot to keep the flashed stick small. The small three
+# (biorisk/low_concern/control_lists) are pulled + extracted in-guest by 30-commec-setup.sh.
+DB_BASE_URL=$(pin "['commec_databases']['base_url']")
+DB_CHANNEL="${COMMEC_DB_CHANNEL:-$(pin "['commec_databases']['channel']")}"
+STAGING="${STAGING:-$WORK/dbs-staging}"; mkdir -p "$STAGING"
+
+# latest.json -> {"latest": {...}, "experimental": {...}}; pick the channel's revision map.
+LATEST_JSON=$(curl -fSL --retry 3 "${DB_BASE_URL%/}/latest.json")
+BEST_MATCH_REV=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d[{'stable':'latest','experimental':'experimental'}[sys.argv[2]]]['best_match'])" "$LATEST_JSON" "$DB_CHANNEL")
+echo "R2 databases: channel=$DB_CHANNEL, best_match revision=$BEST_MATCH_REV"
+
+# Cache the best_match download by revision (R2 revision URLs are immutable), then stage a copy
+# for the DB disk plus its manifest (firstboot drops the manifest into best_match/ after
+# expanding). No expected-hash pin (trusting upstream); the SHA256SUMS below guards only the
+# copy from the DB disk into the image (verified by 50-stage-dbs.sh), not provenance.
+BM_CACHE="$DOWNLOADS/best_match-${BEST_MATCH_REV}.tar.zst"
+if [ ! -f "$BM_CACHE" ]; then
+  echo "fetching best_match ${BEST_MATCH_REV} (~6.5 GiB) from R2"
+  curl -fSL --retry 3 -o "$BM_CACHE" "${DB_BASE_URL%/}/best_match/${BEST_MATCH_REV}/best_match.tar.zst"
 fi
+cp -f "$BM_CACHE" "$STAGING/best_match.tar.zst"
+printf '{\n  "component": "best_match",\n  "revision": "%s"\n}\n' "$BEST_MATCH_REV" > "$STAGING/best_match.manifest.json"
+( cd "$STAGING" && sha256sum ./*.zst | sed 's#\./##' > SHA256SUMS )
 
 echo "== 2. DB disk =="
 if [ -f "$DB_DISK" ] && [ "$(blkid -s LABEL -o value "$DB_DISK" 2>/dev/null)" = "COMMEC_DBSRC" ]; then
@@ -228,10 +243,10 @@ cd "$HERE"
   -var "efi_vars=$EFI_VARS" \
   -var "seed_iso=$SEED_ISO" \
   -var "commec_version=$(pin "['commec']['version']")" \
-  -var "biorisk_url=$(pin "['commec_small_dbs']['url']")" \
+  -var "commec_db_channel=$DB_CHANNEL" \
   -var "commec_source=${COMMEC_SOURCE:-stable}" \
   -var "commec_channel=${COMMEC_CHANNEL:-stable}" \
-  -var "commec_gui_version=${COMMEC_GUI_VERSION:-1.0.6.dev1}" \
+  -var "commec_gui_version=${COMMEC_GUI_VERSION:-1.1.0.dev1}" \
   -var "commec_update_url=${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}" \
   -var "output_dir=$OUTPUT_DIR" \
   -var "cpus=${CPUS:-4}" \
