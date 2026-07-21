@@ -92,7 +92,8 @@ fetch_gui() {
 # built state is reconstructable. Output goes to packer/colophon/ (a gitignored build
 # artifact); the packer file provisioner uploads it and 98-colophon.sh installs it to
 # /etc/commec-colophon/ in the guest.
-# DEB_FILE, MC_FILE, and the gui pins must already be resolved (call after fetch_gui).
+# DEB_FILE, MC_FILE, the gui pins, and the resolved DB revisions (DB_CHANNEL + *_REV) must
+# already be set (call after fetch_gui and after the latest.json revision resolution).
 write_colophon() {
   local dir="$HERE/colophon"
   mkdir -p "$dir"
@@ -124,10 +125,12 @@ write_colophon() {
   V_SOURCE="${COMMEC_SOURCE:-stable}" V_CHANNEL="${COMMEC_CHANNEL:-stable}" \
   V_GUI="${COMMEC_GUI_VERSION:-1.0.6.dev1}" V_UPDATE_URL="${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}" \
   BASE_IMAGE="$DEB_FILE" MINICONDA="$MC_FILE" \
+  DB_CHANNEL_V="$DB_CHANNEL" DB_BIORISK_REV="$BIORISK_REV" DB_LOW_CONCERN_REV="$LOW_CONCERN_REV" \
+  DB_CONTROL_LISTS_REV="$CONTROL_LISTS_REV" DB_BEST_MATCH_REV="$BEST_MATCH_REV" \
   python3 - "$dir/colophon.json" <<'PY'
 import json, os, sys
 m = {
-    "schema": 1,
+    "schema": 2,
     "built_at_utc": os.environ["BUILT_AT"],
     "built_by": os.environ["BUILT_BY"],
     "commec_in_a_box": {
@@ -152,6 +155,16 @@ m = {
         "base_image": os.environ["BASE_IMAGE"],
         "miniconda": os.environ["MINICONDA"],
     },
+    "databases": {
+        "source": "R2 (databases.commec.io)",
+        "channel": os.environ["DB_CHANNEL_V"],
+        "revisions": {
+            "biorisk": os.environ["DB_BIORISK_REV"],
+            "low_concern": os.environ["DB_LOW_CONCERN_REV"],
+            "control_lists": os.environ["DB_CONTROL_LISTS_REV"],
+            "best_match": os.environ["DB_BEST_MATCH_REV"],
+        },
+    },
     "note": "commec.lock (exact package versions) sits alongside this colophon, added in-guest at build.",
 }
 with open(sys.argv[1], "w") as f:
@@ -170,22 +183,30 @@ fetch_verify "$(pin "['miniconda']['url']")" "$DOWNLOADS/$MC_FILE" sha256 "$(pin
 # GUI tree from the pinned gui branch (populates packer/guisrc).
 fetch_gui
 
-# Build-provenance colophon (populates packer/colophon; installed to /etc/commec-colophon in the guest).
-write_colophon
-
-# Screening databases (from commec's R2 bucket; see pins.commec_databases). We resolve the
-# current revisions live from latest.json (trust upstream versioning; no local hash pin) and
-# stage ONLY best_match here - it's the large one (~6.5 GiB compressed) and rides the DB disk
-# compressed, expanding at firstboot to keep the flashed stick small. The small three
+# Screening databases (from commec's R2 bucket; see pins.commec_databases). We resolve every DB's
+# revision ONCE from latest.json (trust upstream versioning; no local hash pin) and use that single
+# snapshot for BOTH the staged best_match and the in-guest small-DB pulls (30-commec-setup.sh gets
+# these revisions as vars, so it does NOT re-resolve). That keeps the colophon's recorded versions
+# provably equal to what is installed. best_match is the large one (~6.5 GiB compressed); it rides
+# the DB disk compressed and expands at firstboot to keep the flashed stick small. The small three
 # (biorisk/low_concern/control_lists) are pulled + extracted in-guest by 30-commec-setup.sh.
 DB_BASE_URL=$(pin "['commec_databases']['base_url']")
 DB_CHANNEL="${COMMEC_DB_CHANNEL:-$(pin "['commec_databases']['channel']")}"
 STAGING="${STAGING:-$WORK/dbs-staging}"; mkdir -p "$STAGING"
 
-# latest.json -> {"latest": {...}, "experimental": {...}}; pick the channel's revision map.
+# latest.json -> {"latest": {...}, "experimental": {...}}; pick the channel's revision map, then
+# resolve every DB's revision from that one snapshot.
 LATEST_JSON=$(curl -fSL --retry 3 "${DB_BASE_URL%/}/latest.json")
-BEST_MATCH_REV=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d[{'stable':'latest','experimental':'experimental'}[sys.argv[2]]]['best_match'])" "$LATEST_JSON" "$DB_CHANNEL")
-echo "R2 databases: channel=$DB_CHANNEL, best_match revision=$BEST_MATCH_REV"
+db_rev() { python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d[{'stable':'latest','experimental':'experimental'}[sys.argv[3]]][sys.argv[2]])" "$LATEST_JSON" "$1" "$DB_CHANNEL"; }
+BIORISK_REV=$(db_rev biorisk)
+LOW_CONCERN_REV=$(db_rev low_concern)
+CONTROL_LISTS_REV=$(db_rev control_lists)
+BEST_MATCH_REV=$(db_rev best_match)
+echo "R2 databases (channel=$DB_CHANNEL): biorisk=$BIORISK_REV low_concern=$LOW_CONCERN_REV control_lists=$CONTROL_LISTS_REV best_match=$BEST_MATCH_REV"
+
+# Build-provenance colophon (populates packer/colophon; installed to /etc/commec-colophon in the
+# guest). Written now that the DB revisions are resolved so it can record them.
+write_colophon
 
 # Cache the best_match download by revision (R2 revision URLs are immutable), then stage a copy
 # for the DB disk plus its manifest (firstboot drops the manifest into best_match/ after
@@ -244,6 +265,9 @@ cd "$HERE"
   -var "seed_iso=$SEED_ISO" \
   -var "commec_version=$(pin "['commec']['version']")" \
   -var "commec_db_channel=$DB_CHANNEL" \
+  -var "biorisk_revision=$BIORISK_REV" \
+  -var "low_concern_revision=$LOW_CONCERN_REV" \
+  -var "control_lists_revision=$CONTROL_LISTS_REV" \
   -var "commec_source=${COMMEC_SOURCE:-stable}" \
   -var "commec_channel=${COMMEC_CHANNEL:-stable}" \
   -var "commec_gui_version=${COMMEC_GUI_VERSION:-1.1.0.dev1}" \

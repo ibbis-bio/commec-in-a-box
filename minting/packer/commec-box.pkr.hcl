@@ -33,6 +33,20 @@ variable "commec_db_channel" {
   type    = string
   default = "stable" # "experimental" -> pull the experimental DB revisions from R2 (30-commec-setup.sh)
 }
+# Small-DB revisions, resolved once from R2 latest.json by build.sh and passed in so the guest
+# does not re-resolve (keeps the colophon's recorded versions == what is installed).
+variable "biorisk_revision" {
+  type    = string
+  default = ""
+}
+variable "low_concern_revision" {
+  type    = string
+  default = ""
+}
+variable "control_lists_revision" {
+  type    = string
+  default = ""
+}
 
 # --- TEMPORARY: gui-branch testing toggles (revert before the real gui->develop PR) ---
 variable "commec_source" {
@@ -169,6 +183,9 @@ build {
     environment_vars = [
       "COMMEC_VERSION=${var.commec_version}",
       "COMMEC_DB_CHANNEL=${var.commec_db_channel}",
+      "BIORISK_REVISION=${var.biorisk_revision}",
+      "LOW_CONCERN_REVISION=${var.low_concern_revision}",
+      "CONTROL_LISTS_REVISION=${var.control_lists_revision}",
       "COMMEC_SOURCE=${var.commec_source}",
       "COMMEC_CHANNEL=${var.commec_channel}",
       "COMMEC_GUI_VERSION=${var.commec_gui_version}",
