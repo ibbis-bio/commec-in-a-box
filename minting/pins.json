@@ -25,36 +25,16 @@
     "install": "conda install -c conda-forge -c bioconda commec=1.0.5",
     "python": ">=3.10",
     "gui_shim": {
-      "_comment": "TEMPORARY SHIM. The kiosk GUI (the repo's gui/ dir) is not yet in a commec release, so build.sh fetches it from the pinned gui branch of the SAME repo and mirrors it into packer/guisrc/ (a gitignored build artifact - the branch is the single source of truth). Bump 'commit' to pull GUI updates. Delete this whole object once gui merges to main and ships inside the version above; the GUI then loads from the installed package (see the removal recipe in build.sh's fetch_gui).",
+      "_comment": "TEMPORARY SHIM. The kiosk GUI (the repo's commec/gui/ dir) is not yet in a commec release, so build.sh fetches it from the pinned gui branch of the SAME repo and mirrors it into packer/guisrc/ (a gitignored build artifact - the branch is the single source of truth). Bump 'commit' to pull GUI updates. Delete this whole object once gui merges to main and ships inside the version above; the GUI then loads from the installed package (see the removal recipe in build.sh's fetch_gui).",
       "branch": "gui",
-      "commit": "ca73e8a8e19124867c17ef10b9762b985fcdd23a"
+      "commit": "71769c62e5a2ee8f81e954191a26f1cd2b53a43a"
     }
   },
 
-  "commec_small_dbs": {
-    "_comment": "Mandatory biorisk + low_concern DBs (this release renamed 'benign' -> 'low_concern', matching the installed screen-default-config.yaml). Unzips into <db>/biorisk and <db>/low_concern.",
-    "version": "v1.1.0",
-    "file": "commec-dbs.zip",
-    "size_bytes": 313230076,
-    "url": "https://github.com/ibbis-bio/commec-databases/releases/download/v1.1.0/commec-dbs.zip",
-    "sha256": "FILL_ON_FIRST_FETCH"
-  },
-
-  "commec_main_dbs": {
-    "_comment": "MONKEY-PATCH (2026-07-03, upstream DB naming NOT finalized): one bundled archive holding the reduced protein(prot)+nucleotide(nucl) BLAST DBs AND the ncbi_taxonomy taxdump; ~36 GiB decompressed (vs ~298 GB before). Archive top dir is taxonomy/, with taxonomy/{protein,nucleotide,ncbi_taxonomy}. commec's shipped config still points at the OLD paths (nr_blast/nr, nt_blast/core_nt, taxonomy/), so 30-commec-setup.sh patches base_paths + those three db paths to this layout. Revert to per-DB pins when upstream finalizes naming. Decompress with 'zstd -d --long=31' (large window).",
-    "bundle": {
-      "archive": "taxonomy.tar.zst",
-      "kind": "bundled BLAST protein(prot) + nucleotide(nucl) + ncbi_taxonomy taxdump",
-      "extract_to": ".",
-      "size_bytes": 7241525419,
-      "sha256": "3d6462702763a7ddd14c7e8b3a606f5e58293a953da2f6da94f388bdf8eed8f0"
-    }
-  },
-
-  "taxonomy": {
-    "_comment": "NCBI taxdump is a moving target (not content-addressable); commec setup pulls it live. Left UNPINNED on purpose - revisit if reproducibility of taxonomy is required.",
-    "url": "ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz",
-    "sha256": "UNPINNED"
+  "commec_databases": {
+    "_comment": "The screening databases (biorisk, low_concern, control_lists, best_match) are served from commec's Cloudflare R2 bucket as per-revision tarballs: <base_url>/<name>/<revision>/<name>.tar.zst. Revisions are NOT pinned here - the mint resolves them live from <base_url>/latest.json ('latest'=stable, 'experimental'=bleeding-edge, selected by COMMEC_DB_CHANNEL) and trusts upstream's versioning. R2 revision URLs are immutable, so a build is reconstructable from the resolved revisions (recorded per-DB in each DB dir's manifest.json in the image). The small three (biorisk/low_concern/control_lists) are downloaded+extracted at mint by 30-commec-setup.sh; best_match (~6.5 GiB compressed) rides the DB disk compressed and expands at firstboot (commec-firstboot.sh) to keep the flashed stick small. Integrity of the copy into the image is checked via a SHA256SUMS computed post-download, not an expected-hash pin.",
+    "base_url": "https://databases.commec.io",
+    "channel": "stable"
   },
 
   "packer": {

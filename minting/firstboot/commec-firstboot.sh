@@ -53,12 +53,12 @@ growpart "$DISK" "$PARTNUM" || echo "  growpart: nothing to do"
 resize2fs "$ROOT_SRC" || echo "WARN: resize2fs failed"
 
 # --- 2b. pre-flight: the grown fs must fit the DB decompression ---
-# The bundled taxonomy DB decompresses to ~36 GiB, and the compressed tarball is still
-# present during extraction, so the target fs needs ~40 GiB free. Fail LOUDLY on a
+# The best_match BLAST DBs decompress to ~30 GiB, and the compressed tarball (~6.5 GiB) is
+# still present during extraction, so the target fs needs ~40 GiB free. Fail LOUDLY on a
 # too-small disk here instead of cascading into a mid-extract ENOSPC - which leaves a
 # corrupt DB, blocks the password helper (its write also hits ENOSPC), and surfaces to
 # the operator only as a baffling "Could not set the password". Update NEED_GB if the
-# bundled DB set changes.
+# staged DB set changes.
 NEED_GB=40
 AVAIL_GB=$(df -PBG /home/commec-user | awk 'NR==2{gsub(/G/,"",$4); print $4+0}')
 echo "[2b] disk check: need ${NEED_GB} GiB free for databases, have ${AVAIL_GB:-0} GiB"
@@ -73,29 +73,36 @@ EOF
   exit 1
 fi
 
-# --- 3. decompress staged DBs into ~commec-user/commec-dbs ---
+# --- 3. decompress the staged best_match DBs into ~commec-user/commec-dbs/best_match ---
 echo "[3/3] unpacking databases (this takes a while)"
-# MONKEY-PATCH: one bundled archive whose top dir is taxonomy/{protein,nucleotide,ncbi_taxonomy}.
-# Extract it into $DBROOT (not a per-DB subdir). We wipe $DBROOT/taxonomy first so the bundled
-# taxdump replaces the redundant one `commec setup` pulled live at build time; biorisk +
-# low_concern (also from setup) are sibling dirs and untouched. Removing the tarball only after a
-# successful extract keeps it resumable across an interrupted run.
-BUNDLE="$STAGING/taxonomy.tar.zst"
+# best_match is the large BLAST DB set; it rides the image compressed (build.sh stages
+# best_match.tar.zst from R2) and expands here to keep the flashed stick small. The small DBs
+# (biorisk/low_concern/control_lists) were already baked at mint by 30-commec-setup.sh; they are
+# sibling dirs under $DBROOT and untouched. Extraction mirrors `commec setup`
+# (`tar --zstd -xf ... -C $DBROOT/best_match`): the tar members are relative to best_match/, so
+# they land as best_match/{protein/prot, nucleotide/nucl} - the shipped config paths. We wipe
+# best_match/ first for a clean re-run, then drop the staged manifest so commec's screen JSON and
+# DB-revision check see the revision. Removing the tarball only after a successful extract keeps
+# it resumable across an interrupted run.
+BUNDLE="$STAGING/best_match.tar.zst"
+BMDIR="$DBROOT/best_match"
 if [ -f "$BUNDLE" ]; then
-  echo "  taxonomy.tar.zst -> $DBROOT/taxonomy/{protein,nucleotide,ncbi_taxonomy}"
-  rm -rf "$DBROOT/taxonomy"
-  if tar -I 'zstd -d --long=31' -xf "$BUNDLE" -C "$DBROOT"; then
+  echo "  best_match.tar.zst -> $BMDIR/{protein,nucleotide}"
+  rm -rf "$BMDIR"
+  mkdir -p "$BMDIR"
+  if tar --zstd -xf "$BUNDLE" -C "$BMDIR"; then
+    install -m 0644 "$STAGING/best_match.manifest.json" "$BMDIR/manifest.json"
     rm -f "$BUNDLE"
   else
-    echo "ERROR: failed to unpack taxonomy.tar.zst"; exit 1
+    echo "ERROR: failed to unpack best_match.tar.zst"; exit 1
   fi
 else
-  # Fail LOUD instead of silently booting a half-provisioned (biorisk-only) box: a missing
+  # Fail LOUD instead of silently booting a half-provisioned (small-DBs-only) box: a missing
   # bundle means the image/flash is incomplete. Exit before the guard is set so first-boot
   # re-runs (and the GUI never comes up) rather than presenting a quietly degraded appliance.
   cat <<EOF >&2
 ########################################################################
-#  FATAL: the screening database bundle is missing from this image.    #
+#  FATAL: the best_match database bundle is missing from this image.   #
 #  Expected: $BUNDLE
 #  This deployment is incomplete - re-flash from a known-good stick.    #
 ########################################################################

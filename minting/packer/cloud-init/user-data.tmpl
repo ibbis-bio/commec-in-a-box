@@ -12,7 +12,7 @@ users:
     shell: /bin/bash
     groups: [sudo]
     lock_passwd: true
-    # SETENV so Packer can pass build env vars (BIORISK_URL etc.) through sudo -E.
+    # SETENV so Packer can pass build env vars (COMMEC_DB_CHANNEL etc.) through sudo -E.
     # This is build-time only; 99-cleanup replaces it with a password-required rule.
     sudo: "ALL=(ALL) NOPASSWD:SETENV: ALL"
     ssh_authorized_keys:

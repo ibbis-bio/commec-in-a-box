@@ -29,8 +29,9 @@ variable "commec_version" {
   type    = string
   default = "1.0.5"
 }
-variable "biorisk_url" {
-  type = string # pinned commec-dbs.zip URL
+variable "commec_db_channel" {
+  type    = string
+  default = "stable" # "experimental" -> pull the experimental DB revisions from R2 (30-commec-setup.sh)
 }
 
 # --- TEMPORARY: gui-branch testing toggles (revert before the real gui->develop PR) ---
@@ -44,7 +45,7 @@ variable "commec_channel" {
 }
 variable "commec_gui_version" {
   type    = string
-  default = "1.0.6.dev1"
+  default = "1.1.0.dev1"
 }
 variable "commec_update_url" {
   type    = string
@@ -160,7 +161,7 @@ build {
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} sudo -E bash {{ .Path }}"
     environment_vars = [
       "COMMEC_VERSION=${var.commec_version}",
-      "BIORISK_URL=${var.biorisk_url}",
+      "COMMEC_DB_CHANNEL=${var.commec_db_channel}",
       "COMMEC_SOURCE=${var.commec_source}",
       "COMMEC_CHANNEL=${var.commec_channel}",
       "COMMEC_GUI_VERSION=${var.commec_gui_version}",
