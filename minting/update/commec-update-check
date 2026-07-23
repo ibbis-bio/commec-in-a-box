@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # Check the configured channel(s) for a newer commec. Writes ONE token to the status file
 # (and echoes it): "up-to-date" | "available:<version>" | "offline".
-# Runs as the desktop user - read-only, no privilege. Driven by commec-update-popup.
+# Runs as the desktop user - read-only, no privilege. Driven by the poller, the desktop icon, and
+# the NetworkManager dispatcher.
 set -uo pipefail
+
+# conda's solver spawns via multiprocessing, which chdir()s to the current directory; if the
+# caller's cwd is unreadable by this user (e.g. /root, when triggered from a root NM dispatcher),
+# that spawn fails and the whole search errors out -> a false "offline". Anchor to a safe cwd.
+cd "${HOME:-/}" 2>/dev/null || cd /
 
 CONDA=/opt/miniconda/bin/conda
 PY=/opt/miniconda/bin/python

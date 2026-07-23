@@ -8,7 +8,7 @@ RT="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"   # conky's env may lack XDG_RUNTIME
 st=$(cat "$RT/commec-update.status" 2>/dev/null)
 case "$st" in
   offline)     printf '${color red}Offline${color}\n' ;;
-  available:*) printf '${color orange}Update %s${color}\n' "${st#available:}" ;;
-  up-to-date)  printf '${color green}Online${color}\n' ;;
+  available:*) printf '${color orange}Update %s available${color}\n' "${st#available:}" ;;
+  up-to-date)  printf '${color green}Up to date${color}\n' ;;
   *)           printf 'checking...\n' ;;   # status file not written yet (pre first poll)
 esac

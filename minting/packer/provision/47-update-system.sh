@@ -38,6 +38,11 @@ if [ "${COMMEC_CHANNEL:-stable}" = "devel" ]; then
   sed -i "s|^probe_url=.*|probe_url=${url}/noarch/repodata.json|" /etc/commec-box/update.conf
 fi
 
+# --- NetworkManager dispatcher: refresh the update status the moment connectivity comes up, so a
+# post-boot wifi connect reflects in conky immediately instead of waiting for the periodic poll.
+# NM requires dispatcher scripts to be root-owned and non-world-writable (0755). ---
+install -m 0755 /tmp/update/commec-update-nm-dispatcher /etc/NetworkManager/dispatcher.d/90-commec-update
+
 # release.json from the currently-installed commec
 CONDA=/opt/miniconda/bin/conda; PY=/opt/miniconda/bin/python
 VER=$("$CONDA" list -p /opt/commec/current-env '^commec$' --json 2>/dev/null | "$PY" -c '

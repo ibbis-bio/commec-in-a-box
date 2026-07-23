@@ -1,0 +1,37 @@
+#!/bin/bash
+# NetworkManager dispatcher: refresh the commec update status the moment connectivity comes up, so
+# the conky overlay reflects a just-connected network immediately instead of waiting for the
+# periodic poll (commec-update-poll.sh). Installed to
+# /etc/NetworkManager/dispatcher.d/90-commec-update by 47-update-system.sh.
+#
+# NM invokes dispatcher scripts as root: `<script> <interface> <action>`. We act only when
+# connectivity comes up, and run the check AS the GUI user so it writes that user's status file
+# ($XDG_RUNTIME_DIR/commec-update.status, read by commec-conky-update). The check is detached
+# (setsid + background) so a slow conda-search never blocks NM or trips its dispatcher timeout.
+action="$2"
+case "$action" in
+  up|connectivity-change) ;;
+  *) exit 0 ;;
+esac
+
+GUI_UID=1000
+GUI_USER=commec-user
+
+# The status file lives in the GUI user's runtime dir, which exists only while they're logged in
+# (the box autologins commec-user). Nothing to refresh before then.
+[ -d "/run/user/$GUI_UID" ] || exit 0
+
+# Debounce: one connect emits several events (up, dhcp4-change, connectivity-change). Skip if a
+# check was already kicked in the last 20s.
+STAMP=/run/commec-update-nm.stamp
+now=$(date +%s)
+last=$(cat "$STAMP" 2>/dev/null || echo 0)
+[ $(( now - last )) -lt 20 ] && exit 0
+echo "$now" > "$STAMP"
+
+# Fire-and-forget as the GUI user, detached from NM's process group. commec-update-check anchors
+# its own cwd, so running it from the dispatcher's root cwd is safe.
+setsid runuser -u "$GUI_USER" -- \
+  env HOME="/home/$GUI_USER" XDG_RUNTIME_DIR="/run/user/$GUI_UID" \
+  /usr/local/bin/commec-update-check >/dev/null 2>&1 &
+exit 0

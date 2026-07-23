@@ -11,7 +11,12 @@ env kept for instant rollback).
   search`es the configured channels, writes one token to `$XDG_RUNTIME_DIR/commec-update.status`:
   `up-to-date` | `available:<ver>` | `offline`.
 - `commec-update-poll.sh` (`/usr/local/bin`, autostarted) - headless loop that periodically runs
-  the check so the status file stays fresh for the conky overlay. No dialogs.
+  the check (`poll_interval`, default 10 min) so the status file stays fresh for the conky overlay.
+  No dialogs.
+- `commec-update-nm-dispatcher` (`/etc/NetworkManager/dispatcher.d/90-commec-update`) - re-runs the
+  check the moment connectivity comes up (NM `up`/`connectivity-change`), so a post-boot wifi connect
+  reflects in conky immediately instead of waiting for the next poll. Runs the check as the GUI user,
+  detached + debounced.
 - `commec-update-now.sh` (`/usr/local/bin`, the "Check for Commec Updates" desktop icon) - runs the
   check on demand and always shows a result: offline notice / "up to date" / an Install prompt that,
   on Install, calls the apply helper with a pulsating progress dialog. Dialogs are `--on-top
@@ -46,8 +51,10 @@ rule in `/etc/sudoers.d/zzz-commec-update`. The `zzz-` prefix is vital: it must 
 ## conky status
 
 The overlay shows an Update line driven by `commec-conky-update` (`minting/assets/`), which reads
-the status token the poller writes: green `Online` / red `Offline` / orange `Update <ver>`. It does
-no network of its own - "can hit conda?" comes from the poller's `offline` token.
+the status token the check writes: green `Up to date` / orange `Update <ver> available` / red
+`Offline`. The label reflects the actual update state when online, not just connectivity. It does
+no network of its own - "can hit conda?" comes from the check's `offline` token, refreshed by the
+poller and the NetworkManager dispatcher.
 
 ## Waiting on upstream (reproducibility)
 
