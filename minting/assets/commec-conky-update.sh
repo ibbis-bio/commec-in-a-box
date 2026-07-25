@@ -11,6 +11,9 @@ st=$(cat "$RT/commec-update.status" 2>/dev/null)
 case "$st" in
   offline)    printf '${color red}Offline${color}\n' ;;
   up-to-date) printf '${color green}Up to date${color}\n' ;;
+  # A newer database exists but this commec is too old to accept it, and no commec update is
+  # available yet either. Not green: the box IS behind, it just cannot act on it right now.
+  blocked:*)  printf '${color orange}Databases need a newer commec${color}\n' ;;
   available:*)
     # "available:sw=<ver>" | "available:db=<n>" | "available:sw=<ver>,db=<n>"
     body=${st#available:}

@@ -20,9 +20,32 @@ conda_channels="conda-forge,bioconda"; channel="stable"; db_dir="/home/commec-us
 [ -r "$CONF" ] && . "$CONF"
 
 write_release() { # <version> <env> <prev_env>
-  cat >"$REL" <<JSON
-{ "version": "$1", "channel": "$channel", "env": "$2", "prev_env": "$3", "applied": "$(date -u +%FT%TZ)" }
-JSON
+  # MERGE into the existing release.json rather than rewriting it. The file is shared: mint
+  # stamps the database revisions into it and commec-db-apply maintains them (including
+  # "databases_previous", the only thing a database rollback can aim at). Overwriting the whole
+  # file here would silently erase that record on every commec update.
+  "$PY" - "$REL" "$1" "$channel" "$2" "$3" <<'PY'
+import json, sys, time
+
+rel_path, version, channel, env, prev_env = sys.argv[1:6]
+try:
+    with open(rel_path) as fh:
+        release = json.load(fh)
+except (OSError, ValueError):
+    release = {}
+
+release.update({
+    "version": version,
+    "channel": channel,
+    "env": env,
+    "prev_env": prev_env,
+    "applied": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+})
+
+with open(rel_path, "w") as fh:
+    json.dump(release, fh, indent=2)
+    fh.write("\n")
+PY
   chmod 0644 "$REL"
 }
 

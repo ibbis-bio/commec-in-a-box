@@ -36,7 +36,6 @@ PY="${COMMEC_BASE_PYTHON:-/opt/miniconda/bin/python}"
 # Defaults, overridable in update.conf.
 db_dir=/home/commec-user/commec-dbs
 db_channel=latest
-db_base_url=""
 db_free_margin_gb=5
 db_update_enabled=1
 db_user=commec-user
@@ -80,25 +79,25 @@ busy=$(curl -sk --max-time 5 "$gui_url" 2>>"$LOG" | "$PY" -c '
 import json,sys
 try: print("yes" if json.load(sys.stdin).get("busy") else "no")
 except Exception: print("unknown")' 2>>"$LOG")
-case "$busy" in
-  yes) die "a screening run is in progress - updating the databases now would corrupt it. Try again when it finishes." 4 ;;
-  no)  log "GUI reports idle" ;;
-  *)   # GUI unreachable/unparseable: fall back to looking for a live screen process. pgrep -f
-       # matches EXTENDED regex, so the quantifier must be a bare '+'; '\+' is a literal plus
-       # that silently matches nothing - a guard that never fires.
-       pgrep -u "$db_user" -f 'commec[[:space:]]+screen' >/dev/null 2>>"$LOG"
-       case $? in
-         0) die "a screening run is in progress - updating the databases now would corrupt it. Try again when it finishes." 4 ;;
-         1) log "GUI status unavailable; no commec screen process found" ;;
-         # pgrep itself failed (bad user, bad pattern): we have no way to tell whether a screen
-         # is running, and guessing "no" is how you corrupt someone's run.
-         *) die "cannot determine whether a screen is running (pgrep failed for user $db_user). Refusing to touch the databases." 4 ;;
-       esac ;;
+[ "$busy" = yes ] && die "a screening run is in progress - updating the databases now would corrupt it. Try again when it finishes." 4
+[ "$busy" = no ] && log "GUI reports idle"
+
+# Then look for a screen PROCESS regardless of what the GUI said. /status only knows about jobs
+# the GUI itself started, so a screen launched from a terminal reports busy=false - taking that
+# as authoritative swaps databases out from under a live run. Any evidence of a screen wins.
+# pgrep -f matches EXTENDED regex, so the quantifier must be a bare '+'; '\+' is a literal plus
+# that silently matches nothing - a guard that never fires.
+pgrep -u "$db_user" -f 'commec[[:space:]]+screen' >/dev/null 2>>"$LOG"
+case $? in
+  0) die "a screening run is in progress - updating the databases now would corrupt it. Try again when it finishes." 4 ;;
+  1) log "no commec screen process found" ;;
+  # pgrep itself failed (bad user, bad pattern): we have no way to tell whether a screen is
+  # running, and guessing "no" is how you corrupt someone's run.
+  *) die "cannot determine whether a screen is running (pgrep failed for user $db_user). Refusing to touch the databases." 4 ;;
 esac
 
 setup_extra=()
 status_args=(--db-dir "$db_dir" --channel "$db_channel")
-[ -n "$db_base_url" ] && status_args+=(--base-url "$db_base_url")
 
 if [ "$mode" = rollback ]; then
   # Revisions to restore come from release.json, not from R2's latest. Feeding them to the same
@@ -144,7 +143,17 @@ if [ "$(read_status 'print(d["blocked_by_commec_version"])')" = "True" ]; then
   log "blocked by commec version: $blocked"
 fi
 
-[ -n "${pending// /}" ] || { step "all databases are up to date"; log "nothing to do"; exit 0; }
+if [ -z "${pending// /}" ]; then
+  # Do not claim everything is current when something is merely un-installable: "blocked" means a
+  # newer revision exists that this commec cannot accept.
+  if [ -n "${blocked:-}" ]; then
+    step "nothing can be updated yet - $blocked need a newer commec first"
+  else
+    step "all databases are up to date"
+  fi
+  log "nothing to do"
+  exit 0
+fi
 step "pending: $pending"
 
 # Space: the tarball plus what it expands to, plus a margin, while the live copy is still in

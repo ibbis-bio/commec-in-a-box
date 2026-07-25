@@ -81,7 +81,10 @@ def main():
     parser.add_argument("--db-dir", required=True,
                         help="Database parent directory (as passed to `commec setup -d`).")
     parser.add_argument("--base-url", default=None,
-                        help="R2 base URL. Defaults to commec's own R2_PUBLIC_BASE_URL.")
+                        help="Where to look up download SIZES. Defaults to commec's own "
+                             "R2_PUBLIC_BASE_URL. This does NOT move the download itself - "
+                             "`commec setup` has no such option and always fetches from its "
+                             "built-in host - so use it only for probing a mirror.")
     parser.add_argument("--channel", default="latest", choices=("latest", "experimental"),
                         help="Which key of latest.json to read.")
     parser.add_argument("--no-sizes", action="store_true",

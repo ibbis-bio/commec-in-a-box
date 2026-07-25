@@ -26,9 +26,12 @@ behind but its latest revision needs a newer commec than is installed, the check
   search`es the configured channels, runs the database check, and writes two files into
   `$XDG_RUNTIME_DIR`: `commec-update.json` (full state: versions, per-database revisions and
   sizes) and `commec-update.status` (one token for cheap readers). Tokens: `up-to-date` |
-  `available:sw=<ver>` | `available:db=<n>` | `available:sw=<ver>,db=<n>` | `offline`. Its own
-  stderr goes to `commec-update-check.log` beside them - a check that fails silently shows up
-  only as a wrong conky label, which is hard to diagnose from the desktop.
+  `available:sw=<ver>` | `available:db=<n>` | `available:sw=<ver>,db=<n>` | `blocked:<n>` |
+  `offline`. `blocked:<n>` means a newer database exists that this commec is too old to accept
+  and no commec update is on offer yet: the box is behind and cannot act on it, which must not
+  be reported as up to date. The check's own stderr goes to `commec-update-check.log` beside
+  those files - a check that fails silently shows up only as a wrong conky label, which is hard
+  to diagnose from the desktop.
 - `commec-db-status.py` (`/usr/local/lib/commec-box`) - the database half of the check. Run with
   the CURRENT ENV's python (`/opt/commec/current-env/bin/python`), because the supported-revision
   ceiling lives in the installed commec package; imports `commec.setup` and emits json describing
@@ -58,8 +61,7 @@ behind but its latest revision needs a newer commec than is installed, the check
   recorded `prev_env` (and also restarts the GUI).
 - `commec-db-apply` (`/usr/local/sbin`, root via NOPASSWD) - the database updater. See below.
 - `update.conf` -> `/etc/commec-box/update.conf` - channels, probe URL, poll timing, and the
-  `db_*` settings (directory, revision channel, base URL, free-space margin, owning user, GUI
-  status URL).
+  `db_*` settings (directory, revision channel, free-space margin, owning user, GUI status URL).
 - Installed + wired by `packer/provision/47-update-system.sh` (`commec-patch-config` by
   `30-commec-setup.sh`).
 

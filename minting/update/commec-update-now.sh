@@ -192,5 +192,11 @@ st=$(/usr/local/bin/commec-update-check | tail -1)
 case "$st" in
   offline)     info_dialog "Offline - can't check for commec updates right now." 25 ;;
   available:*) prompt_and_install ;;
+  blocked:*)
+    # Newer databases exist but this commec is too old for them, and no commec update is on
+    # offer yet. There is nothing to install, so say what the situation is instead of claiming
+    # everything is current.
+    blocked_names=$(state_field '", ".join(sorted(n for n,v in d.get("databases",{}).items() if v.get("status")=="blocked"))')
+    info_dialog "Newer screening databases are available (<b>${blocked_names}</b>), but they need a newer version of commec than this machine has.\n\nNo commec update is available yet - check again later." 30 ;;
   *)           info_dialog "commec and its databases are up to date." 15 ;;
 esac

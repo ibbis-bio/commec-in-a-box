@@ -51,6 +51,24 @@ set_rev() {  # <name> <revision>
   manifest=$(manifest_of "$name")
   [ -f "$manifest" ] || { echo "no such database: $name ($manifest)" >&2; return 1; }
   backup_once "$name"
+  # release.json's "databases" block has to move with the manifest. On a box that is genuinely
+  # behind, the two agree; if only the manifest is decremented then after the update the recorded
+  # revision is unchanged, so commec-db-apply writes no "databases_previous" and --rollback has
+  # nothing to aim at - an artefact of the test rig that would look like a bug in the updater.
+  [ -f "$REL" ] && "$PY" - "$REL" "$name" "$rev" <<'PY'
+import json, sys
+rel_path, name, rev = sys.argv[1:4]
+try:
+    with open(rel_path) as fh:
+        release = json.load(fh)
+except (OSError, ValueError):
+    raise SystemExit(0)
+if name in (release.get("databases") or {}):
+    release["databases"][name] = rev
+    with open(rel_path, "w") as fh:
+        json.dump(release, fh, indent=2)
+        fh.write("\n")
+PY
   "$PY" - "$manifest" "$rev" <<'PY'
 import json, sys
 path, rev = sys.argv[1], sys.argv[2]

@@ -7,7 +7,8 @@
 #   commec-update.status  ONE token, cheap to read                            (the conky line)
 #
 # Tokens: "offline" | "up-to-date" | "available:sw=<ver>" | "available:db=<n>"
-#         | "available:sw=<ver>,db=<n>"
+#         | "available:sw=<ver>,db=<n>" | "blocked:<n>"  (n databases are behind but need a
+#         newer commec than is installed, and no commec update is on offer yet)
 #
 # Runs as the desktop user - read-only, no privilege. Driven by the poller, the desktop icon,
 # and the NetworkManager dispatcher.
@@ -37,7 +38,6 @@ conda_channels="conda-forge,bioconda"
 probe_url="https://conda.anaconda.org"
 db_dir=/home/commec-user/commec-dbs
 db_channel=latest
-db_base_url=""
 db_update_enabled=1
 [ -r "$CONF" ] && . "$CONF"
 
@@ -102,7 +102,6 @@ print("yes" if V(b) > V(a) else "no")' "$installed" "$latest")
 db_json=""
 if [ "$db_update_enabled" = "1" ] && [ -x "$ENVLINK/bin/python" ] && [ -r "$DB_STATUS_HELPER" ]; then
   db_args=(--db-dir "$db_dir" --channel "$db_channel")
-  [ -n "$db_base_url" ] && db_args+=(--base-url "$db_base_url")
   db_json=$("$ENVLINK/bin/python" "$DB_STATUS_HELPER" "${db_args[@]}" 2>>"$CHECKLOG")
 fi
 
@@ -132,7 +131,17 @@ if state["commec"]["update"]:
     parts.append(f"sw={latest}")
 if state["db_update_count"]:
     parts.append(f"db={state['db_update_count']}")
-state["token"] = ("available:" + ",".join(parts)) if parts else "up-to-date"
+
+if parts:
+    state["token"] = "available:" + ",".join(parts)
+elif state["blocked_by_commec_version"]:
+    # Nothing is installable right now, but the box is NOT up to date: a newer database exists
+    # and this commec is too old to accept it. Reporting "up-to-date" here would show a green
+    # overlay on a box that is knowingly behind, which is the one thing the status must not do.
+    blocked = sum(1 for v in state["databases"].values() if v.get("status") == "blocked")
+    state["token"] = f"blocked:{blocked}"
+else:
+    state["token"] = "up-to-date"
 
 print(json.dumps(state))
 PY
