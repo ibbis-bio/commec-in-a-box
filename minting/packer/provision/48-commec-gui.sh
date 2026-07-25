@@ -89,16 +89,19 @@ table inet commec {
 EOF
 systemctl enable nftables.service
 
-# --- GUI server: systemd service (lan.sh -> 0.0.0.0:443 HTTPS), gated on DBs ready ---
+# --- GUI server: systemd service (lan.sh -> 0.0.0.0:443 HTTPS), gated on first boot + password ---
 # PATH includes miniconda so lan.sh's `conda info --base` resolves under the minimal service env.
 # ExecStartPre runs mkcert -install (idempotent) so the per-device CA is trusted before --tls-auto
 # issues the cert. (Firefox NSS trust also needs the user's profile to exist - see the launcher.)
+# Do not use ConditionPathExists for these guards: systemd does not re-attempt a skipped unit when
+# a condition file later appears. A blocking pre-start keeps this unit pending until first boot
+# finished and the operator password (and its GUI hash) were recorded. If either setup phase
+# crashes, the LAN GUI never starts unauthenticated.
 cat > /etc/systemd/system/commec-gui.service <<EOF
 [Unit]
 Description=commec-gui server (kiosk + LAN, HTTPS)
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/var/lib/commec/firstboot.done
 
 [Service]
 Type=simple
@@ -106,6 +109,8 @@ User=$KUSER
 WorkingDirectory=$GUI
 Environment=PATH=$CONDA/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=$KHOME
+TimeoutStartSec=0
+ExecStartPre=/bin/bash -c 'until [ -e /var/lib/commec/firstboot.done ] && [ -e /var/lib/commec/password.done ]; do sleep 2; done'
 ExecStartPre=-/bin/bash -c 'mkcert -install || true'
 ExecStart=/bin/bash $GUI/lan.sh
 Restart=on-failure
