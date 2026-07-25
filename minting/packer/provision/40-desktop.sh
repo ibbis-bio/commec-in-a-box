@@ -24,7 +24,7 @@ install -d -m 2755 /var/log/journal
 apt-get update
 apt-get install -y --no-install-recommends \
   xorg xfce4 xfce4-goodies lightdm \
-  conky-all x11-xserver-utils xfconf dbus-x11 \
+  conky-all lm-sensors x11-xserver-utils xfconf dbus-x11 \
   network-manager-gnome \
   firmware-amd-graphics firmware-iwlwifi firmware-realtek firmware-mediatek \
   firmware-atheros firmware-brcm80211 firmware-misc-nonfree

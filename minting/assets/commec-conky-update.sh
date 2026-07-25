@@ -27,13 +27,13 @@ case "$st" in
     done
     IFS=$oldifs
     if [ -n "$sw" ] && [ -n "$db" ]; then
-      printf '${color orange}Update %s + %s database(s)${color}\n' "$sw" "$db"
+      printf '${color yellow}%s + %s database(s) available${color}\n' "$sw" "$db"
     elif [ -n "$sw" ]; then
-      printf '${color orange}Update %s available${color}\n' "$sw"
+      printf '${color yellow}%s available${color}\n' "$sw"
     elif [ -n "$db" ]; then
-      printf '${color orange}%s database update(s)${color}\n' "$db"
+      printf '${color yellow}%s database(s) available${color}\n' "$db"
     else
-      printf '${color orange}Update available${color}\n'
+      printf '${color yellow}Available${color}\n'
     fi
     ;;
   *) printf 'checking...\n' ;;   # status file not written yet (pre first poll)

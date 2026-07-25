@@ -4,6 +4,10 @@
 # parses the output), NOT ${execi}. Thresholds are env-overridable.
 # Installed to /usr/local/bin/commec-conky-temp by 40-desktop.sh.
 RST='${color}'
+if ! command -v sensors >/dev/null; then
+  printf '${color red}unavailable (lm-sensors missing)%s\n' "$RST"
+  exit 0
+fi
 val() { sensors 2>/dev/null | grep -iE "^($1):" | grep -oE '[0-9]+\.[0-9]+' | head -1; }
 col() { local t=${1%.*}
   [ -z "$1" ] && { printf '%s' "$RST"; return; }
