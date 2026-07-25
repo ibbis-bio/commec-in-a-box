@@ -21,7 +21,8 @@ done
 # poll: headless loop that keeps them fresh for the conky overlay (no dialogs). now: the
 # desktop-icon action (check + all dialogs + install). apply: root A/B env-flip helper.
 # db-apply: root database updater. db-status: the machine-readable database check the other two
-# call; it runs under the CURRENT ENV's python, so it lives in a lib dir rather than on PATH.
+# call; screen-state: the shared running-screen safety probe. These live in a lib dir rather
+# than on PATH.
 # (commec-patch-config is installed earlier by 30-commec-setup.sh, which both this apply helper
 # and the mint step call.)
 install -m 0755 /tmp/update/commec-update-check    /usr/local/bin/commec-update-check
@@ -31,6 +32,7 @@ install -m 0755 /tmp/update/commec-update-apply    /usr/local/sbin/commec-update
 install -m 0755 /tmp/update/commec-db-apply        /usr/local/sbin/commec-db-apply
 install -d /usr/local/lib/commec-box
 install -m 0644 /tmp/update/commec-db-status.py    /usr/local/lib/commec-box/commec-db-status.py
+install -m 0755 /tmp/update/commec-screen-state    /usr/local/lib/commec-box/commec-screen-state
 
 # --- config -------------------------------------------------------------------------------
 install -d /etc/commec-box
@@ -115,7 +117,7 @@ cat >/home/commec-user/Desktop/commec-check-updates.desktop <<'EOF'
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Check for Commec Updates
+Name=Update Commec
 Comment=Check online for a newer commec and install it
 Exec=/usr/local/bin/commec-update-now.sh
 Icon=system-software-update

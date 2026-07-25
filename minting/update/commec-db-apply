@@ -32,6 +32,7 @@ REL="${COMMEC_BOX_RELEASE:-/etc/commec-box/release.json}"
 LOG="${COMMEC_UPDATE_LOG:-/var/log/commec-update.log}"
 STATUS_HELPER="${COMMEC_DB_STATUS:-/usr/local/lib/commec-box/commec-db-status.py}"
 PY="${COMMEC_BASE_PYTHON:-/opt/miniconda/bin/python}"
+SCREEN_GUARD="${COMMEC_SCREEN_GUARD:-/usr/local/lib/commec-box/commec-screen-state}"
 
 # Defaults, overridable in update.conf.
 db_dir=/home/commec-user/commec-dbs
@@ -56,6 +57,25 @@ ROLLBACK_JSON=/var/lib/commec/db-rollback.json
 log()  { printf '%s\n' "$*" >>"$LOG"; }
 step() { printf 'STEP %s\n' "$*"; log "== $* =="; }
 die()  { printf 'ERROR %s\n' "$1"; log "FATAL: $1"; exit "${2:-1}"; }
+require_screen_idle() { # <phase>
+  local phase="$1" state rc
+  state=$(COMMEC_BOX_CONF="$CONF" COMMEC_BASE_PYTHON="$PY" \
+    COMMEC_SCREEN_USER="$db_user" COMMEC_GUI_URL="$gui_url" \
+    "$SCREEN_GUARD" 2>>"$LOG")
+  rc=$?
+  log "screen guard ($phase): state=${state:-unknown} rc=$rc"
+  case "$rc" in
+    0) return 0 ;;
+    4)
+      [ "$phase" = "before swap" ] && rm -rf "$STAGE"
+      die "a screening run is in progress - finish it before updating the databases." 4
+      ;;
+    *)
+      [ "$phase" = "before swap" ] && rm -rf "$STAGE"
+      die "cannot determine whether a screening run is in progress. Refusing to update the databases." 4
+      ;;
+  esac
+}
 
 mode=apply
 case "${1:-}" in
@@ -73,28 +93,9 @@ log "=== commec-db-apply ($mode) $(date -u +%FT%TZ) ==="
 
 # --- preflight ------------------------------------------------------------------------------
 # A screen in flight reads these files; swapping directories underneath it would break the run
-# (and any conclusion drawn from it). The GUI answers /status on loopback without auth.
+# (and any conclusion drawn from it).
 step "checking for a running screen"
-busy=$(curl -sk --max-time 5 "$gui_url" 2>>"$LOG" | "$PY" -c '
-import json,sys
-try: print("yes" if json.load(sys.stdin).get("busy") else "no")
-except Exception: print("unknown")' 2>>"$LOG")
-[ "$busy" = yes ] && die "a screening run is in progress - updating the databases now would corrupt it. Try again when it finishes." 4
-[ "$busy" = no ] && log "GUI reports idle"
-
-# Then look for a screen PROCESS regardless of what the GUI said. /status only knows about jobs
-# the GUI itself started, so a screen launched from a terminal reports busy=false - taking that
-# as authoritative swaps databases out from under a live run. Any evidence of a screen wins.
-# pgrep -f matches EXTENDED regex, so the quantifier must be a bare '+'; '\+' is a literal plus
-# that silently matches nothing - a guard that never fires.
-pgrep -u "$db_user" -f 'commec[[:space:]]+screen' >/dev/null 2>>"$LOG"
-case $? in
-  0) die "a screening run is in progress - updating the databases now would corrupt it. Try again when it finishes." 4 ;;
-  1) log "no commec screen process found" ;;
-  # pgrep itself failed (bad user, bad pattern): we have no way to tell whether a screen is
-  # running, and guessing "no" is how you corrupt someone's run.
-  *) die "cannot determine whether a screen is running (pgrep failed for user $db_user). Refusing to touch the databases." 4 ;;
-esac
+require_screen_idle "before staging"
 
 setup_extra=()
 status_args=(--db-dir "$db_dir" --channel "$db_channel")
@@ -242,6 +243,8 @@ find "$STAGE" -type f -name '*.tar.zst' -print -delete >>"$LOG" 2>&1
 # --- swap -----------------------------------------------------------------------------------
 # Directory renames within one filesystem: near-atomic per database, and the old copy only goes
 # once the new one is in place.
+# A screen may have started during the download. Refuse immediately before touching live data.
+require_screen_idle "before swap"
 step "installing"
 for name in $pending; do
   old="$db_dir/$name.commec-old"

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Report whether a commec screening run is active.
+#
+# Output and exit status:
+#   idle     0
+#   busy     4
+#   unknown  5
+#
+# The GUI knows about screens it launched; the process check also catches screens launched
+# from a terminal. Any evidence of a running screen wins. If the GUI cannot be reached, an
+# authoritative process check can still establish that the machine is idle.
+set -u
+
+CONF="${COMMEC_BOX_CONF:-/etc/commec-box/update.conf}"
+PY="${COMMEC_BASE_PYTHON:-/opt/miniconda/bin/python}"
+
+db_user=commec-user
+gui_url="https://127.0.0.1/status"
+[ -r "$CONF" ] && . "$CONF"
+
+screen_user="${COMMEC_SCREEN_USER:-$db_user}"
+status_url="${COMMEC_GUI_URL:-$gui_url}"
+
+busy=$(curl -k --silent --show-error --max-time 5 "$status_url" | "$PY" -c '
+import json, sys
+try:
+    print("yes" if json.load(sys.stdin).get("busy") else "no")
+except Exception:
+    print("unknown")
+')
+
+if [ "$busy" = yes ]; then
+  printf 'busy\n'
+  exit 4
+fi
+
+# pgrep -f uses an extended regular expression. A bare '+' is the quantifier; '\+' would
+# match a literal plus and silently make this guard ineffective.
+pgrep -u "$screen_user" -f 'commec[[:space:]]+screen' >/dev/null
+case $? in
+  0) printf 'busy\n'; exit 4 ;;
+  1) printf 'idle\n'; exit 0 ;;
+  *) printf 'unknown\n'; exit 5 ;;
+esac

@@ -45,10 +45,13 @@ behind but its latest revision needs a newer commec than is installed, the check
   the check the moment connectivity comes up (NM `up`/`connectivity-change`), so a post-boot wifi
   connect reflects in conky immediately instead of waiting for the next poll. Runs the check as
   the GUI user, detached + debounced.
-- `commec-update-now.sh` (`/usr/local/bin`, the "Check for Commec Updates" desktop icon) - runs
+- `commec-update-now.sh` (`/usr/local/bin`, the "Update Commec" desktop icon) - runs
   the check and always shows a result: offline notice / "up to date" / one install prompt listing
-  everything pending with sizes. On Install it applies the package, re-checks, then applies the
-  databases, showing real download progress.
+  everything pending with sizes. It refuses while a screening run is active. On Install it
+  applies the package, re-checks, then applies the databases, showing real download progress.
+- `commec-screen-state` (`/usr/local/lib/commec-box`) - shared running-screen probe used by the
+  UI and both privileged apply helpers. It combines the GUI's `/status` state with a process
+  check so terminal-launched screens are also protected.
 - `commec-patch-config` (`/usr/local/sbin`) - patches a given env's `screen-default-config.yaml`
   (DB paths + `blast_mt_mode=0`) using that env's own python. Called at mint
   (`30-commec-setup.sh`) and by `commec-update-apply` after each `conda create`, so a freshly
@@ -58,7 +61,8 @@ behind but its latest revision needs a newer commec than is installed, the check
   /opt/miniconda/envs/commec-env-<ver> commec=<ver>`, patch the new env's config, smoke-test
   (`commec --version`), flip the `/opt/commec/current-env` symlink, write
   `/etc/commec-box/release.json`, restart `commec-gui.service`. `--rollback` flips back to the
-  recorded `prev_env` (and also restarts the GUI).
+  recorded `prev_env` (and also restarts the GUI). Apply and rollback refuse while a screen is
+  running; apply rechecks immediately before activation in case one started during the build.
 - `commec-db-apply` (`/usr/local/sbin`, root via NOPASSWD) - the database updater. See below.
 - `update.conf` -> `/etc/commec-box/update.conf` - channels, probe URL, poll timing, and the
   `db_*` settings (directory, revision channel, free-space margin, owning user, GUI status URL).
@@ -76,17 +80,17 @@ symlink; new shells pick it up immediately, and the previous env stays for rollb
 `commec setup` is not safe to point at the live database directory, so `commec-db-apply` wraps
 it:
 
-1. **Preflight.** Refuse if a screen is running (the GUI answers `/status` on loopback without
-   auth; a process check is the fallback), if the databases cannot be reached, or if free space
-   is under the download plus its extracted size plus `db_free_margin_gb`.
+1. **Preflight.** Refuse if a screen is running, if the databases cannot be reached, or if free
+   space is under the download plus its extracted size plus `db_free_margin_gb`.
 2. **Stage.** `commec setup -d <db_dir>/.commec-staging`, run as `db_user`. The staging area is
    seeded with the manifests of the databases that are already current, so setup downloads
    exactly the pending set instead of everything.
 3. **Verify.** Check each staged manifest and that the tree is non-empty, then delete the
    downloaded `.tar.zst` (setup leaves it behind, which for `best_match` is over 6 GB).
-4. **Swap.** Rename the live directory aside, move the staged one in, then remove the old copy.
-   Whole-directory renames mean a new revision cannot leave stale files behind, and a failure at
-   any earlier point leaves the live databases untouched.
+4. **Swap.** Recheck that no screen started during the download, rename the live directory
+   aside, move the staged one in, then remove the old copy. Whole-directory renames mean a new
+   revision cannot leave stale files behind, and a failure at any earlier point leaves the live
+   databases untouched.
 5. **Record.** Write the new revisions to `release.json` under `databases`, keeping the outgoing
    set as `databases_previous`, then restart the GUI.
 
@@ -109,8 +113,8 @@ rules in `/etc/sudoers.d/zzz-commec-update`. The `zzz-` prefix is vital: it must
 ## conky status
 
 The overlay shows an Update line driven by `commec-conky-update` (`minting/assets/`), which
-reads the status token: green `Up to date` / orange `Update <ver> available`, `<n> database
-update(s)`, or both / red `Offline`. It does no network of its own - "can we reach the update
+reads the status token: green `Up to date` / yellow `<ver> available`, `<n> database(s)
+available`, or both / red `Offline`. It does no network of its own - "can we reach the update
 services?" comes from the check's `offline` token, refreshed by the poller and the
 NetworkManager dispatcher.
 

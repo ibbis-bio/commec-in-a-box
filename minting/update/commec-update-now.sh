@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# On-demand update, launched from the "Check for Commec Updates" desktop icon. Runs the check
+# On-demand update, launched from the "Update Commec" desktop icon. Runs the check
 # and ALWAYS shows a result: offline notice / "up to date" / one install prompt covering BOTH
 # what is pending - the commec package and the screening databases.
 #
@@ -19,6 +19,7 @@ STATE="$RUNTIME/commec-update.json"
 # Where this dialog's own stderr goes. Silently swallowing it would leave a wrong dialog with
 # no way to find out why.
 UILOG="$RUNTIME/commec-update-ui.log"
+SCREEN_GUARD=/usr/local/lib/commec-box/commec-screen-state
 [ -r "$CONF" ] && . "$CONF"
 
 # Force a just-mapped dialog above fullscreen windows (yad --on-top sets _NET_WM_STATE_ABOVE;
@@ -42,6 +43,36 @@ error_dialog() {  # $1 = text
   ( yad --title="Commec" --error --on-top --sticky --skip-taskbar --center --no-wrap \
         --width=460 --button="OK:0" --text="$1" >/dev/null 2>&1 ) &
   raise_above "Commec"
+}
+
+screen_update_allowed() {
+  local state rc
+  state=$("$SCREEN_GUARD" 2>>"$UILOG")
+  rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    4) info_dialog "A screening run is in progress.\n\nFinish it before updating Commec." 30 ;;
+    *) error_dialog "Could not determine whether a screening run is in progress.\n\nRefusing to update Commec." ;;
+  esac
+  printf 'screen guard refused update: state=%s rc=%s\n' "${state:-unknown}" "$rc" >>"$UILOG"
+  return 1
+}
+
+check_with_progress() {  # $1 = progress text; prints the check's status token
+  local text="$1" progress_pid st
+  yad --title="Checking for Commec updates" --progress --pulsate --no-buttons \
+      --on-top --sticky --skip-taskbar --center --width=460 --timeout=180 \
+      --progress-text="Working..." --text="$text" >/dev/null 2>>"$UILOG" &
+  progress_pid=$!
+  raise_above "Checking for Commec updates"
+
+  st=$(/usr/local/bin/commec-update-check | tail -1)
+
+  if kill -0 "$progress_pid" 2>>"$UILOG"; then
+    kill "$progress_pid" 2>>"$UILOG"
+  fi
+  wait "$progress_pid" || true
+  printf '%s\n' "$st"
 }
 
 # Human-readable summary of everything pending, built from the state the check just wrote.
@@ -97,7 +128,7 @@ if blocked:
     text += ("\n\nNote: " + ", ".join(sorted(blocked)) +
              " needs a newer commec before it can be updated.")
 
-text += ("\n\nInstall now? Each part is prepared alongside what is running and swapped in "
+text += ("\n\nInstall now? Each part is prepared alongside the current installation and swapped in "
          "only after it checks out.")
 print(text)
 PYEOF
@@ -168,7 +199,7 @@ prompt_and_install() {
     if install_software "$sw_ver"; then
       # A newer commec can lift the compatibility ceiling on database revisions, so re-check
       # against the environment that is now live before deciding what to download.
-      /usr/local/bin/commec-update-check >/dev/null 2>&1
+      check_with_progress "Checking database compatibility with commec $sw_ver..." >/dev/null
     else
       failures="commec $sw_ver did not install. See /var/log/commec-update.log."
     fi
@@ -180,7 +211,7 @@ prompt_and_install() {
     fi
   fi
 
-  /usr/local/bin/commec-update-check >/dev/null 2>&1
+  check_with_progress "Refreshing update status..." >/dev/null
   if [ -n "$failures" ]; then
     error_dialog "$failures"
   else
@@ -188,10 +219,10 @@ prompt_and_install() {
   fi
 }
 
-st=$(/usr/local/bin/commec-update-check | tail -1)
+st=$(check_with_progress "Checking software and database updates...")
 case "$st" in
   offline)     info_dialog "Offline - can't check for commec updates right now." 25 ;;
-  available:*) prompt_and_install ;;
+  available:*) if screen_update_allowed; then prompt_and_install; fi ;;
   blocked:*)
     # Newer databases exist but this commec is too old for them, and no commec update is on
     # offer yet. There is nothing to install, so say what the situation is instead of claiming
