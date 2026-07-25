@@ -9,7 +9,8 @@
 # -> grub -> our default menuentry runs the restore script. (Target box boots UEFI.)
 #
 # Usage:  ./build-stick.sh        (CZ_REPO_IMG must contain /partimag/<IMAGE_NAME>)
-# Env: STICK_IMG (default $WORK_DIR/commec-deploy-stick.img), STICK_SIZE (default 90G),
+# Flash the result with ./flash-stick.sh so larger media gets a valid backup GPT.
+# Env: STICK_IMG (default $WORK_DIR/commec-deploy-stick.img), STICK_SIZE (default 24G),
 #      BOOT_TIMEOUT secs (default 0 = boot straight to auto-restore with no menu; hidden style).
 #
 # STATUS: authored from the proven save/restore params but NOT yet test-booted end to end.
@@ -213,5 +214,5 @@ sudo cp "$GRUBCFG" "$GRUBCFG.orig"
 
 sudo sync
 log "deployment stick image ready: $STICK_IMG"
-log "  dd to a nominal 128 GB (or larger) USB:  sudo dd if=$STICK_IMG of=/dev/sdX bs=4M status=progress oflag=direct"
+log "  flash to USB:             STICK_IMG=$STICK_IMG ./flash-stick.sh /dev/sdX"
 log "  or test in a VM:        see wrap/README.md"
