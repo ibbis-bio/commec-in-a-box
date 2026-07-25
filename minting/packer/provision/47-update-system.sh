@@ -17,14 +17,20 @@ for home in /home/commec-user /root; do
 done
 
 # --- scripts ------------------------------------------------------------------------------
-# check: writes the status token. poll: headless loop that keeps the status file fresh for the
-# conky overlay (no dialogs). now: the desktop-icon action (check + all dialogs + install). apply:
-# root A/B env-flip helper. (commec-patch-config is installed earlier by 30-commec-setup.sh, which
-# both this apply helper and the mint step call.)
+# check: writes the status token + state json for BOTH axes (commec package and databases).
+# poll: headless loop that keeps them fresh for the conky overlay (no dialogs). now: the
+# desktop-icon action (check + all dialogs + install). apply: root A/B env-flip helper.
+# db-apply: root database updater. db-status: the machine-readable database check the other two
+# call; it runs under the CURRENT ENV's python, so it lives in a lib dir rather than on PATH.
+# (commec-patch-config is installed earlier by 30-commec-setup.sh, which both this apply helper
+# and the mint step call.)
 install -m 0755 /tmp/update/commec-update-check    /usr/local/bin/commec-update-check
 install -m 0755 /tmp/update/commec-update-poll.sh  /usr/local/bin/commec-update-poll.sh
 install -m 0755 /tmp/update/commec-update-now.sh   /usr/local/bin/commec-update-now.sh
 install -m 0755 /tmp/update/commec-update-apply    /usr/local/sbin/commec-update-apply
+install -m 0755 /tmp/update/commec-db-apply        /usr/local/sbin/commec-db-apply
+install -d /usr/local/lib/commec-box
+install -m 0644 /tmp/update/commec-db-status.py    /usr/local/lib/commec-box/commec-db-status.py
 
 # --- config -------------------------------------------------------------------------------
 install -d /etc/commec-box
@@ -43,16 +49,38 @@ fi
 # NM requires dispatcher scripts to be root-owned and non-world-writable (0755). ---
 install -m 0755 /tmp/update/commec-update-nm-dispatcher /etc/NetworkManager/dispatcher.d/90-commec-update
 
-# release.json from the currently-installed commec
+# release.json from the currently-installed commec, plus the database revisions baked at mint.
+# The database block is not cosmetic: commec-db-apply moves it to "databases_previous" on each
+# update, which is what --rollback restores from. Without it seeded here the FIRST database
+# update on a box would have no rollback target.
 CONDA=/opt/miniconda/bin/conda; PY=/opt/miniconda/bin/python
 VER=$("$CONDA" list -p /opt/commec/current-env '^commec$' --json 2>/dev/null | "$PY" -c '
 import json,sys
 try: d=json.load(sys.stdin)
 except Exception: d=[]
 print(d[0]["version"] if d else "unknown")')
-cat >/etc/commec-box/release.json <<JSON
-{ "version": "$VER", "channel": "${COMMEC_CHANNEL:-stable}", "built": "$(date -u +%FT%TZ)" }
-JSON
+DBDIR="${COMMEC_DB_DIR:-/home/commec-user/commec-dbs}"
+"$PY" - /etc/commec-box/release.json "$VER" "${COMMEC_CHANNEL:-stable}" "$DBDIR" <<'PY'
+import json, os, sys, time
+
+rel_path, version, channel, db_dir = sys.argv[1:5]
+databases = {}
+for name in sorted(os.listdir(db_dir)) if os.path.isdir(db_dir) else []:
+    manifest = os.path.join(db_dir, name, "manifest.json")
+    if os.path.isfile(manifest):
+        with open(manifest) as fh:
+            databases[name] = json.load(fh)["revision"]
+
+with open(rel_path, "w") as fh:
+    json.dump({
+        "version": version,
+        "channel": channel,
+        "built": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "databases": databases,
+    }, fh, indent=2)
+    fh.write("\n")
+print("release.json:", version, channel, databases)
+PY
 chmod 0644 /etc/commec-box/release.json
 
 # --- NOPASSWD for the apply helper --------------------------------------------------------
@@ -60,6 +88,7 @@ chmod 0644 /etc/commec-box/release.json
 # so its NOPASSWD wins sudo's last-match. Same reason as zzz-commec-firstrun; do not rename.
 cat >/etc/sudoers.d/zzz-commec-update <<'EOF'
 commec-user ALL=(root) NOPASSWD: /usr/local/sbin/commec-update-apply
+commec-user ALL=(root) NOPASSWD: /usr/local/sbin/commec-db-apply
 EOF
 chmod 0440 /etc/sudoers.d/zzz-commec-update
 visudo -cf /etc/sudoers.d/zzz-commec-update

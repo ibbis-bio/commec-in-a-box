@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# TEST HELPER - NOT INSTALLED ON THE APPLIANCE. Copy it to a box only while testing.
+#
+# The update system can only be exercised end-to-end if the box is behind something. Rather than
+# publish throwaway newer artifacts, this walks the box BACKWARDS so the real, current published
+# versions become "the update":
+#
+#   commec-update-decrement status                 what the box thinks it has
+#   commec-update-decrement db <name> <revision>   rewrite one database manifest to an older revision
+#   commec-update-decrement db-all                 decrement every installed database's minor revision
+#   commec-update-decrement restore                put the manifests back (undo db/db-all)
+#
+# The manifest is the ONLY thing a decrement touches: `commec setup` decides what to fetch by
+# comparing <db_dir>/<name>/manifest.json against the published revision, so a lower number there
+# makes the real published revision look like an update. The database files themselves are left
+# alone, which is what makes the test honest - the update has to actually replace them.
+#
+# Software decrement has no special support here: `commec-update-apply <older-version>` already
+# does exactly the right thing (builds that version's env, patches its config, smoke-tests it,
+# flips current-env, records it in release.json). Point update.conf at a channel carrying both
+# versions, apply the older one, and the check will then offer the newer one. For example:
+#
+#   sudo /usr/local/sbin/commec-update-apply 2.0.0.dev0     # decrement
+#   /usr/local/bin/commec-update-check                      # -> available:sw=2.0.0.dev1
+#
+set -uo pipefail
+
+# Overridable so the helper can be exercised off-appliance before it is trusted on a box.
+CONF="${COMMEC_BOX_CONF:-/etc/commec-box/update.conf}"
+REL="${COMMEC_BOX_RELEASE:-/etc/commec-box/release.json}"
+PY="${COMMEC_BASE_PYTHON:-/opt/miniconda/bin/python}"
+db_dir=/home/commec-user/commec-dbs
+[ -r "$CONF" ] && . "$CONF"
+BACKUP="$db_dir/.decrement-backup"
+
+usage() { sed -n '2,28p' "$0" | sed 's/^# \?//'; exit "${1:-0}"; }
+
+manifest_of() { printf '%s/%s/manifest.json' "$db_dir" "$1"; }
+
+read_rev() {  # <name>
+  "$PY" -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$(manifest_of "$1")"
+}
+
+backup_once() {  # <name>
+  mkdir -p "$BACKUP"
+  [ -f "$BACKUP/$1.json" ] || cp -p "$(manifest_of "$1")" "$BACKUP/$1.json"
+}
+
+set_rev() {  # <name> <revision>
+  local name="$1" rev="$2" manifest
+  manifest=$(manifest_of "$name")
+  [ -f "$manifest" ] || { echo "no such database: $name ($manifest)" >&2; return 1; }
+  backup_once "$name"
+  "$PY" - "$manifest" "$rev" <<'PY'
+import json, sys
+path, rev = sys.argv[1], sys.argv[2]
+with open(path) as fh:
+    data = json.load(fh)
+was = data["revision"]
+data["revision"] = rev
+with open(path, "w") as fh:
+    json.dump(data, fh, indent=2)
+    fh.write("\n")
+print(f"  {data['component']}: {was} -> {rev}")
+PY
+}
+
+case "${1:-}" in
+  status)
+    echo "commec:    $("$PY" -c 'import json,sys;print(json.load(open(sys.argv[1])).get("version","?"))' "$REL")"
+    echo "databases:"
+    for d in "$db_dir"/*/; do
+      name=$(basename "$d")
+      [ -f "$(manifest_of "$name")" ] && printf '  %-16s %s\n' "$name" "$(read_rev "$name")"
+    done
+    [ -d "$BACKUP" ] && echo "backup present: $BACKUP (run 'restore' to undo)"
+    ;;
+
+  db)
+    [ $# -eq 3 ] || usage 2
+    set_rev "$2" "$3"
+    ;;
+
+  db-all)
+    # Drop each installed database by one minor revision. A revision that does not exist upstream
+    # is fine: only the comparison uses it, while the download always targets the published one.
+    for d in "$db_dir"/*/; do
+      name=$(basename "$d")
+      [ -f "$(manifest_of "$name")" ] || continue
+      cur=$(read_rev "$name")
+      major=${cur%%.*}; minor=${cur##*.}
+      if [ "$minor" -gt 0 ]; then
+        set_rev "$name" "$major.$((minor - 1))"
+      elif [ "$major" -gt 1 ]; then
+        set_rev "$name" "$((major - 1)).9"
+      elif [ "$major" -eq 1 ]; then
+        # 1.0 -> 0.9. Still a valid revision to compare against (only 0.0 means "no database"),
+        # and the download always targets the published revision, so the fake number is harmless.
+        set_rev "$name" "0.9"
+      else
+        echo "  $name: $cur cannot be decremented further; leaving alone"
+      fi
+    done
+    ;;
+
+  restore)
+    [ -d "$BACKUP" ] || { echo "nothing to restore (no $BACKUP)"; exit 0; }
+    for b in "$BACKUP"/*.json; do
+      name=$(basename "$b" .json)
+      cp -p "$b" "$(manifest_of "$name")"
+      echo "  restored $name -> $(read_rev "$name")"
+    done
+    rm -rf "$BACKUP"
+    ;;
+
+  ""|-h|--help) usage 0 ;;
+  *) usage 2 ;;
+esac

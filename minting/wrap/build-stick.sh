@@ -17,10 +17,13 @@
 
 STICK_IMG="${STICK_IMG:-$WORK_DIR/commec-deploy-stick.img}"
 # Size the disk image just above the baked payload (the partclone image of the master +
-# Clonezilla Live). With the bundled ~7 GB compressed DB the master's used space is ~15 GB, so a
-# 30 GB image fits a cheap 32 GB stick with margin and flashes/deploys fast. Bump if the payload
-# grows. (Was 90G when the master carried the ~78 GB compressed nr+nt DBs.)
-STICK_SIZE="${STICK_SIZE:-30G}"
+# Clonezilla Live). With the bundled ~7 GB compressed DB the master's used space is ~15 GB and
+# the payload lands around 11 GB, so 24 GiB leaves generous margin and flashes/deploys fast.
+#
+# STICK_SIZE is in GiB (qemu-img), while stick capacities are quoted in GB: a nominal "32 GB"
+# stick is only ~28.9 GiB of addressable space, so anything at or above 29G will NOT fit one.
+# Check the target with `lsblk -b` before raising this.
+STICK_SIZE="${STICK_SIZE:-24G}"
 BOOT_TIMEOUT="${BOOT_TIMEOUT:-0}"   # 0 + hidden style = boot straight to auto-restore, no menu
 [ -f "$CZ_REPO_IMG" ] || die "CZ_REPO_IMG not found (run save.sh first): $CZ_REPO_IMG"
 ensure_clonezilla_iso

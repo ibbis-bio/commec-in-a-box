@@ -48,7 +48,15 @@ echo "gui @ $SHA"
 
 echo "== set LOCAL dev version $DEVVER (throwaway edit, not committed) =="
 sed -i "s/{% set version = \".*\" %}/{% set version = \"$DEVVER\" %}/" "$REPO/conda-recipe/meta.yaml"
-[ -f "$REPO/pyproject.toml" ] && sed -i -E "s/^version = \".*\"/version = \"$DEVVER\"/" "$REPO/pyproject.toml" || true
+grep -q "{% set version = \"$DEVVER\" %}" "$REPO/conda-recipe/meta.yaml" || \
+  { echo "ERROR: could not set the version in conda-recipe/meta.yaml"; exit 1; }
+# pyproject quotes the version with EITHER quote style; match both. This is not cosmetic: the
+# package's own metadata comes from here, so a missed substitution builds a conda package
+# labelled <devver> whose `commec --version` (and release.json, and the GUI) still report the
+# source version - which then disagrees with what the updater compares against.
+sed -i -E "s/^version = ['\"][^'\"]*['\"]/version = \"$DEVVER\"/" "$REPO/pyproject.toml"
+grep -q "^version = \"$DEVVER\"$" "$REPO/pyproject.toml" || \
+  { echo "ERROR: could not set the version in pyproject.toml"; exit 1; }
 # Build from the LOCAL checkout, not a release tarball. The recipe's source is a versioned GitHub
 # release URL (v{{version}}.tar.gz) with a pinned sha256, so a dev version has no matching release
 # and conda-build errors ("Empty sha256"). Point source at the parent dir (the checked-out gui).

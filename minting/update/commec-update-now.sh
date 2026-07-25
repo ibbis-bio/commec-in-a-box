@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
-# On-demand commec update, launched from the "Check for Commec Updates" desktop icon. Runs the
-# check and ALWAYS shows a result: offline notice / "up to date" / an install prompt that, on
-# Install, runs the NOPASSWD apply helper with a pulsating progress dialog. This is the only
-# update UI - the background poller (commec-update-poll.sh) is headless and just refreshes the
-# status file for the conky overlay.
+# On-demand update, launched from the "Check for Commec Updates" desktop icon. Runs the check
+# and ALWAYS shows a result: offline notice / "up to date" / one install prompt covering BOTH
+# what is pending - the commec package and the screening databases.
+#
+# Order matters on install: commec first, then databases. A database revision can require a
+# newer commec (commec/database_compatibility.yaml), so the database check is re-run against the
+# freshly installed environment before the databases are touched.
+#
+# This is the only update UI - the background poller (commec-update-poll.sh) is headless and
+# just refreshes the status file for the conky overlay.
 set -u
 
 CONF=/etc/commec-box/update.conf
+PY=/opt/miniconda/bin/python
+REL=/etc/commec-box/release.json
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+STATE="$RUNTIME/commec-update.json"
+# Where this dialog's own stderr goes. Silently swallowing it would leave a wrong dialog with
+# no way to find out why.
+UILOG="$RUNTIME/commec-update-ui.log"
 [ -r "$CONF" ] && . "$CONF"
 
 # Force a just-mapped dialog above fullscreen windows (yad --on-top sets _NET_WM_STATE_ABOVE;
@@ -20,49 +32,165 @@ raise_above() {  # $1 = window title substring
   done
 }
 
-notify_offline() {
+info_dialog() {  # $1 = text, $2 = timeout seconds
   ( yad --title="Commec" --info --on-top --sticky --skip-taskbar --center --no-wrap \
-        --width=380 --timeout=25 --button="OK:0" \
-        --text="Offline - can't check for commec updates right now." >/dev/null 2>&1 ) &
+        --width=420 --timeout="$2" --button="OK:0" --text="$1" >/dev/null 2>&1 ) &
   raise_above "Commec"
 }
 
-notify_uptodate() {
-  ( yad --title="Commec" --info --on-top --sticky --skip-taskbar --center --no-wrap \
-        --width=380 --timeout=15 --button="OK:0" \
-        --text="commec is up to date." >/dev/null 2>&1 ) &
+error_dialog() {  # $1 = text
+  ( yad --title="Commec" --error --on-top --sticky --skip-taskbar --center --no-wrap \
+        --width=460 --button="OK:0" --text="$1" >/dev/null 2>&1 ) &
   raise_above "Commec"
 }
 
-prompt_update() {  # $1 = version
-  local ver="$1" ans newver
-  yad --title="Commec update available" --question --on-top --sticky --skip-taskbar --center \
-      --no-wrap --width=460 --image=software-update-available \
-      --text="A new commec version is available: <b>$ver</b>\n\nInstall it now? The new version is prepared alongside the current one and switched in only after it checks out." \
-      --button="Later:1" --button="Install now:0" >/dev/null 2>&1
-  ans=$?
-  [ "$ans" = 0 ] || return 0
+# Human-readable summary of everything pending, built from the state the check just wrote.
+summary_text() {
+  "$PY" - "$STATE" <<'PYEOF'
+import json, sys
+
+try:
+    with open(sys.argv[1]) as fh:
+        state = json.load(fh)
+except Exception:
+    print("An update is available.")
+    raise SystemExit(0)
+
+
+def gb(n):
+    return n / (1024.0 ** 3)
+
+
+rows = []
+commec = state.get("commec") or {}
+if commec.get("update"):
+    rows.append(("commec", str(commec.get("installed")), str(commec.get("latest")), ""))
+
+pending = {n: v for n, v in (state.get("databases") or {}).items()
+           if v.get("status") in ("update", "missing", "revert")}
+for name, info in sorted(pending.items()):
+    size = info.get("bytes")
+    rows.append((name,
+                 info.get("have") or "not installed",
+                 str(info.get("latest")),
+                 f"({gb(size):.1f} GB)" if size else ""))
+
+# Pad into columns: the dialog renders this block in a monospace <tt> span, so a ragged list
+# reads as noise when several things are pending at once.
+w_name = max((len(r[0]) for r in rows), default=0)
+w_have = max((len(r[1]) for r in rows), default=0)
+w_want = max((len(r[2]) for r in rows), default=0)
+lines = [f"{n:<{w_name}}  {h:>{w_have}} -> {w:<{w_want}}  {s}".rstrip()
+         for n, h, w, s in rows]
+
+text = "The following updates are available:\n\n<tt>" + "\n".join(lines) + "</tt>"
+
+download = state.get("db_download_bytes") or 0
+required = state.get("db_required_bytes") or 0
+if download:
+    text += (f"\n\nDownload about {gb(download):.1f} GB; "
+             f"needs about {gb(required):.0f} GB free while installing.")
+
+blocked = [n for n, v in (state.get("databases") or {}).items()
+           if v.get("status") == "blocked"]
+if blocked:
+    text += ("\n\nNote: " + ", ".join(sorted(blocked)) +
+             " needs a newer commec before it can be updated.")
+
+text += ("\n\nInstall now? Each part is prepared alongside what is running and swapped in "
+         "only after it checks out.")
+print(text)
+PYEOF
+}
+
+state_field() {  # $1 = python expression over `d`
+  "$PY" -c "import json,sys;d=json.load(open(sys.argv[1]));print($1)" "$STATE" 2>>"$UILOG"
+}
+
+release_version() {
+  "$PY" -c 'import json;print(json.load(open("'"$REL"'")).get("version",""))' 2>>"$UILOG"
+}
+
+# --- install steps ---------------------------------------------------------------------------
+
+install_software() {  # $1 = version; returns the helper's exit status
+  local ver="$1" rc
   ( sudo -n /usr/local/sbin/commec-update-apply "$ver" ) 2>&1 | \
     yad --title="Installing commec $ver" --progress --pulsate --auto-close --auto-kill \
         --on-top --sticky --center --width=460 --no-buttons \
         --text="Installing commec $ver - please wait..." >/dev/null 2>&1 &
   raise_above "Installing commec"
   wait
-  newver=$(python3 -c 'import json;print(json.load(open("/etc/commec-box/release.json")).get("version",""))' 2>/dev/null)
-  if [ "$newver" = "$ver" ]; then
-    yad --title="Commec" --info --on-top --sticky --center --timeout=15 --button="OK:0" \
-        --text="Updated to commec <b>$ver</b>. New terminals use it immediately." >/dev/null 2>&1 &
-    raise_above "Commec"
+  # The dialog consumed the pipe, so ask release.json what actually landed.
+  [ "$(release_version)" = "$ver" ]
+  rc=$?
+  return $rc
+}
+
+install_databases() {  # returns the helper's exit status
+  local rc errfile rcfile
+  # Two files, deliberately: the helper's exit status is written with > (truncating), so it
+  # must not share a file with the ERROR lines the translator appends.
+  errfile=$(mktemp); rcfile=$(mktemp)
+  # commec-db-apply speaks a small line protocol (PROGRESS/STEP/ERROR); translate it into
+  # yad's (a bare number sets the bar, "#text" sets the label) so the operator sees real
+  # download progress rather than a pulsating bar that says nothing.
+  ( sudo -n /usr/local/sbin/commec-db-apply; echo "$?" >"$rcfile" ) 2>>"$UILOG" | \
+    while IFS= read -r line; do
+      case "$line" in
+        PROGRESS\ *) set -- $line; printf '%s\n' "$2"; printf '#Downloading %s (%s%%)\n' "${3:-database}" "$2" ;;
+        STEP\ *)     printf '#%s\n' "${line#STEP }" ;;
+        ERROR\ *)    printf '%s\n' "${line#ERROR }" >>"$errfile" ;;
+      esac
+    done | \
+    yad --title="Updating databases" --progress --auto-close --auto-kill \
+        --on-top --sticky --center --width=520 --no-buttons \
+        --text="Updating screening databases - please wait..." >/dev/null 2>&1 &
+  raise_above "Updating databases"
+  wait
+  rc=$(tail -1 "$rcfile")
+  DB_ERROR=$(tail -1 "$errfile")
+  rm -f "$errfile" "$rcfile"
+  return "${rc:-1}"
+}
+
+prompt_and_install() {
+  yad --title="Commec updates available" --question --on-top --sticky --skip-taskbar --center \
+      --no-wrap --width=520 --image=software-update-available \
+      --text="$(summary_text)" \
+      --button="Later:1" --button="Install now:0" >/dev/null 2>&1
+  [ $? = 0 ] || return 0
+
+  local failures="" sw_ver
+  sw_ver=$(state_field 'd["commec"]["latest"] if d.get("commec",{}).get("update") else ""')
+
+  if [ -n "$sw_ver" ]; then
+    if install_software "$sw_ver"; then
+      # A newer commec can lift the compatibility ceiling on database revisions, so re-check
+      # against the environment that is now live before deciding what to download.
+      /usr/local/bin/commec-update-check >/dev/null 2>&1
+    else
+      failures="commec $sw_ver did not install. See /var/log/commec-update.log."
+    fi
+  fi
+
+  if [ "$(state_field 'd.get("db_update_count",0)')" != "0" ]; then
+    if ! install_databases; then
+      failures="${failures:+$failures\n}Database update failed: ${DB_ERROR:-see /var/log/commec-update.log}"
+    fi
+  fi
+
+  /usr/local/bin/commec-update-check >/dev/null 2>&1
+  if [ -n "$failures" ]; then
+    error_dialog "$failures"
   else
-    yad --title="Commec" --error --on-top --sticky --center --button="OK:0" \
-        --text="Update to $ver did not complete. See /var/log/commec-update.log." >/dev/null 2>&1 &
-    raise_above "Commec"
+    info_dialog "Update complete.\n\ncommec: <b>$(release_version)</b>\nNew terminals use it immediately." 20
   fi
 }
 
-st=$(/usr/local/bin/commec-update-check 2>/dev/null | tail -1)
+st=$(/usr/local/bin/commec-update-check | tail -1)
 case "$st" in
-  offline)     notify_offline ;;
-  available:*) prompt_update "${st#available:}" ;;
-  *)           notify_uptodate ;;   # up-to-date / unknown
+  offline)     info_dialog "Offline - can't check for commec updates right now." 25 ;;
+  available:*) prompt_and_install ;;
+  *)           info_dialog "commec and its databases are up to date." 15 ;;
 esac

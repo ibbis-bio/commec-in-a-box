@@ -27,7 +27,7 @@
     "gui_shim": {
       "_comment": "TEMPORARY SHIM. The kiosk GUI (the repo's commec/gui/ dir) is not yet in a commec release, so build.sh fetches it from the pinned gui branch of the SAME repo and mirrors it into packer/guisrc/ (a gitignored build artifact - the branch is the single source of truth). Bump 'commit' to pull GUI updates. Delete this whole object once gui merges to main and ships inside the version above; the GUI then loads from the installed package (see the removal recipe in build.sh's fetch_gui).",
       "branch": "gui",
-      "commit": "8cb882e3b63b2cbf44eeceb13e37ce73d308e389"
+      "commit": "5b3ce5f55a73a5314da98ed4c987df01a88434e1"
     }
   },
 

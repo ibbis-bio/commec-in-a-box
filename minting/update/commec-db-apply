@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+# Root helper (invoked via a narrow NOPASSWD sudoers rule) that updates the SCREENING
+# DATABASES, the companion to commec-update-apply (which updates the commec package).
+#
+#   commec-db-apply              download + install every pending database revision
+#   commec-db-apply --rollback   restore the revisions recorded as previous in release.json
+#   commec-db-apply --dry-run    print what would happen, touch nothing
+#
+# It never lets `commec setup` write into the live database directory. Everything lands in a
+# staging dir first and is swapped in only after it verifies - which is what makes a failed or
+# interrupted update a no-op instead of a corrupted screening database. Three upstream
+# behaviours make that wrapper necessary (issues filed; do not "simplify" this away):
+#   1. setup leaves the multi-GB .tar.zst next to the extracted DB. We delete it post-verify.
+#   2. setup has no free-space preflight; a mid-extract ENOSPC would eat the live DB.
+#   3. setup extracts OVER the existing directory, so files dropped by a new revision would
+#      survive as stale. A swap of whole directories cannot leave stragglers.
+# It DOES rely on upstream exiting non-zero on failure (the fail-loud fix) - without that a
+# failed download would look like a successful one and we would swap in a broken tree.
+#
+# Progress is written to stdout as machine-readable lines for the caller's dialog:
+#   PROGRESS <0-100> <database>      download progress of the named database
+#   STEP <text>                      human-readable phase
+#   ERROR <text>                     fatal, about to exit non-zero
+# The full, unabridged output also goes to /var/log/commec-update.log.
+set -uo pipefail
+
+# Paths are overridable ONLY to make this rehearsable off-appliance (and in tests). Reaching
+# this script through its sudoers rule cannot set them: sudo's env_reset drops the environment.
+LINK="${COMMEC_ENV_LINK:-/opt/commec/current-env}"
+CONF="${COMMEC_BOX_CONF:-/etc/commec-box/update.conf}"
+REL="${COMMEC_BOX_RELEASE:-/etc/commec-box/release.json}"
+LOG="${COMMEC_UPDATE_LOG:-/var/log/commec-update.log}"
+STATUS_HELPER="${COMMEC_DB_STATUS:-/usr/local/lib/commec-box/commec-db-status.py}"
+PY="${COMMEC_BASE_PYTHON:-/opt/miniconda/bin/python}"
+
+# Defaults, overridable in update.conf.
+db_dir=/home/commec-user/commec-dbs
+db_channel=latest
+db_base_url=""
+db_free_margin_gb=5
+db_update_enabled=1
+db_user=commec-user
+gui_url="https://127.0.0.1/status"
+[ -r "$CONF" ] && . "$CONF"
+
+# Drop to the owner of the database tree so nothing lands root-owned. When not running as root
+# (rehearsal on a dev host) we are already that user, so run in place.
+if [ "$(id -u)" = 0 ]; then
+  as_db_user() { runuser -u "$db_user" -- "$@"; }
+else
+  as_db_user() { "$@"; }
+fi
+
+STAGE="$db_dir/.commec-staging"
+ROLLBACK_JSON=/var/lib/commec/db-rollback.json
+
+log()  { printf '%s\n' "$*" >>"$LOG"; }
+step() { printf 'STEP %s\n' "$*"; log "== $* =="; }
+die()  { printf 'ERROR %s\n' "$1"; log "FATAL: $1"; exit "${2:-1}"; }
+
+mode=apply
+case "${1:-}" in
+  --rollback) mode=rollback ;;
+  --dry-run)  mode=dry-run ;;
+  "")         ;;
+  *)          echo "usage: $0 [--rollback|--dry-run]" >&2; exit 2 ;;
+esac
+
+log "=== commec-db-apply ($mode) $(date -u +%FT%TZ) ==="
+
+[ "${db_update_enabled}" = "1" ] || die "database updates are disabled in $CONF (db_update_enabled=$db_update_enabled)" 3
+[ -x "$LINK/bin/commec" ] || die "no commec in $LINK - is the environment healthy?" 3
+[ -d "$db_dir" ] || die "database directory missing: $db_dir" 3
+
+# --- preflight ------------------------------------------------------------------------------
+# A screen in flight reads these files; swapping directories underneath it would break the run
+# (and any conclusion drawn from it). The GUI answers /status on loopback without auth.
+step "checking for a running screen"
+busy=$(curl -sk --max-time 5 "$gui_url" 2>>"$LOG" | "$PY" -c '
+import json,sys
+try: print("yes" if json.load(sys.stdin).get("busy") else "no")
+except Exception: print("unknown")' 2>>"$LOG")
+case "$busy" in
+  yes) die "a screening run is in progress - updating the databases now would corrupt it. Try again when it finishes." 4 ;;
+  no)  log "GUI reports idle" ;;
+  *)   # GUI unreachable/unparseable: fall back to looking for a live screen process. pgrep -f
+       # matches EXTENDED regex, so the quantifier must be a bare '+'; '\+' is a literal plus
+       # that silently matches nothing - a guard that never fires.
+       pgrep -u "$db_user" -f 'commec[[:space:]]+screen' >/dev/null 2>>"$LOG"
+       case $? in
+         0) die "a screening run is in progress - updating the databases now would corrupt it. Try again when it finishes." 4 ;;
+         1) log "GUI status unavailable; no commec screen process found" ;;
+         # pgrep itself failed (bad user, bad pattern): we have no way to tell whether a screen
+         # is running, and guessing "no" is how you corrupt someone's run.
+         *) die "cannot determine whether a screen is running (pgrep failed for user $db_user). Refusing to touch the databases." 4 ;;
+       esac ;;
+esac
+
+setup_extra=()
+status_args=(--db-dir "$db_dir" --channel "$db_channel")
+[ -n "$db_base_url" ] && status_args+=(--base-url "$db_base_url")
+
+if [ "$mode" = rollback ]; then
+  # Revisions to restore come from release.json, not from R2's latest. Feeding them to the same
+  # status helper keeps ONE code path for "what is pending and how big is it" - so rollback gets
+  # the identical free-space preflight instead of an unchecked multi-GB download.
+  prev=$("$PY" -c '
+import json,sys
+try: d=json.load(open("'"$REL"'"))
+except Exception: d={}
+print(json.dumps(d.get("databases_previous") or {}))' 2>>"$LOG")
+  [ -n "$prev" ] && [ "$prev" != "{}" ] || die "no previous database revisions recorded in $REL" 6
+  mkdir -p "$(dirname "$ROLLBACK_JSON")"
+  "$PY" -c '
+import json,sys
+json.dump({"database_info":{"revisions":json.loads(sys.argv[1])}}, open("'"$ROLLBACK_JSON"'","w"), indent=2)' "$prev"
+  chmod 0644 "$ROLLBACK_JSON"
+  log "rollback target: $prev"
+  # `commec setup -r` reads the revisions out of that file instead of latest.json; a revision
+  # older than the installed one is reported as a "revert" and downloaded like any other.
+  setup_extra=(-r "$ROLLBACK_JSON")
+  status_args+=(--revisions "$prev")
+fi
+
+step "checking which databases are behind"
+status_json=$("$LINK/bin/python" "$STATUS_HELPER" "${status_args[@]}" 2>>"$LOG")
+[ -n "$status_json" ] || die "database status check produced no output (see $LOG)" 5
+log "status: $status_json"
+
+read_status() { printf '%s' "$status_json" | "$PY" -c "import json,sys;d=json.load(sys.stdin);$1"; }
+
+[ "$(read_status 'print(d["ok"])')" = "True" ] || \
+  die "$(read_status 'print(d.get("error") or "could not determine database status")')" 5
+[ "$(read_status 'print(d["online"])')" = "True" ] || \
+  die "offline - cannot reach the database service" 5
+
+pending=$(read_status 'print(" ".join(n for n,v in sorted(d["databases"].items()) if v["status"] in ("update","missing","revert")))')
+
+if [ "$(read_status 'print(d["blocked_by_commec_version"])')" = "True" ]; then
+  blocked=$(read_status 'print(", ".join(n for n,v in sorted(d["databases"].items()) if v["status"]=="blocked"))')
+  # Not fatal on its own - other databases may still be updatable - but the operator must know
+  # the box will still be behind afterwards.
+  printf 'STEP %s\n' "note: $blocked need a newer commec first; update commec, then re-check"
+  log "blocked by commec version: $blocked"
+fi
+
+[ -n "${pending// /}" ] || { step "all databases are up to date"; log "nothing to do"; exit 0; }
+step "pending: $pending"
+
+# Space: the tarball plus what it expands to, plus a margin, while the live copy is still in
+# place (the whole point of staging). Refuse rather than risk a half-written database.
+need_bytes=$(read_status 'print(d["required_bytes"])')
+margin_bytes=$(( db_free_margin_gb * 1024 * 1024 * 1024 ))
+# -P (single-line, portable columns) and --output are mutually exclusive in GNU df; take the
+# 4th column of the POSIX format rather than depending on --output being available.
+avail_bytes=$(df -PB1 "$db_dir" 2>>"$LOG" | awk 'NR==2{print $4}' | tr -dc '0-9')
+avail_bytes=${avail_bytes:-0}
+need_total=$(( need_bytes + margin_bytes ))
+log "space: need $need_total bytes (payload $need_bytes + margin ${db_free_margin_gb}G), have $avail_bytes"
+if [ "$need_total" -gt 0 ] && [ "$avail_bytes" -lt "$need_total" ]; then
+  die "not enough free space: need $(( need_total / 1024 / 1024 / 1024 )) GiB, have $(( avail_bytes / 1024 / 1024 / 1024 )) GiB in $db_dir. Free some space and try again." 7
+fi
+
+if [ "$mode" = dry-run ]; then
+  step "dry run - would update: $pending"
+  exit 0
+fi
+
+# --- stage ----------------------------------------------------------------------------------
+# `commec setup -d <dir>` updates everything it finds behind in <dir>. Seeding the staging dir
+# with the manifests of the databases we are NOT touching makes setup consider them up to date,
+# so it downloads exactly the pending set - no extra multi-GB fetches.
+step "preparing staging area"
+rm -rf "$STAGE" || die "could not clear stale staging dir $STAGE" 8
+# A crash between the two renames of a previous run could leave one of these behind; it would
+# otherwise be seeded as if it were a live database.
+rm -rf "$db_dir"/*.commec-old
+mkdir -p "$STAGE" || die "could not create staging dir $STAGE" 8
+for live in "$db_dir"/*/; do
+  name=$(basename "$live")
+  case " $pending " in *" $name "*) continue ;; esac
+  [ -f "$live/manifest.json" ] || continue
+  mkdir -p "$STAGE/$name"
+  cp -p "$live/manifest.json" "$STAGE/$name/manifest.json"
+done
+chown -R "$db_user:$db_user" "$STAGE" 2>>"$LOG" || die "could not set ownership of $STAGE" 8
+
+step "downloading"
+# The env's bin must be on PATH: setup shells out to `tar` (and commec's tooling generally
+# resolves helpers by bare name).
+set -o pipefail
+as_db_user env \
+    PATH="$LINK/bin:/usr/local/bin:/usr/bin:/bin" HOME="$(getent passwd "$db_user" | cut -d: -f6)" \
+    "$LINK/bin/commec" setup -d "$STAGE" "${setup_extra[@]}" 2>&1 \
+  | tr '\r' '\n' \
+  | while IFS= read -r line; do
+      # Strip ANSI so both the log and the percentage match are clean.
+      plain=$(printf '%s' "$line" | sed -e 's/\x1b\[[0-9;]*m//g')
+      case "$plain" in
+        *%\ \(*)  # the download bar line: "[<bar>]  42.1% ( 197.3/ 468.9 MB)"
+          pct=${plain%%.*}; pct=${pct##*\]}; pct=$(printf '%s' "$pct" | tr -dc '0-9')
+          [ -n "$pct" ] && printf 'PROGRESS %s %s\n' "$pct" "${current_db:-database}"
+          ;;
+        *Downloading\ *)
+          current_db=$(printf '%s' "$plain" | sed -n 's/.*Downloading \([a-z_]*\) .*/\1/p')
+          printf 'STEP downloading %s\n' "${current_db:-database}"; log "$plain" ;;
+        *Extracting\ *)
+          printf 'STEP extracting %s\n' "${current_db:-database}"; log "$plain" ;;
+        "") ;;
+        *)  log "$plain" ;;
+      esac
+    done
+rc=${PIPESTATUS[0]}
+[ "$rc" = 0 ] || { rm -rf "$STAGE"; die "commec setup failed (exit $rc) - databases left untouched. See $LOG." 9; }
+
+# --- verify ---------------------------------------------------------------------------------
+step "verifying downloaded databases"
+for name in $pending; do
+  [ -d "$STAGE/$name" ] || { rm -rf "$STAGE"; die "$name missing from the staging area after download" 10; }
+  [ -f "$STAGE/$name/manifest.json" ] || { rm -rf "$STAGE"; die "$name has no manifest after download" 10; }
+  # Something other than the manifest and the tarball must have been extracted.
+  files=$(find "$STAGE/$name" -type f ! -name manifest.json ! -name '*.tar.zst' | head -1)
+  [ -n "$files" ] || { rm -rf "$STAGE"; die "$name extracted to an empty directory" 10; }
+  rev=$("$PY" -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$STAGE/$name/manifest.json" 2>>"$LOG")
+  [ -n "$rev" ] || { rm -rf "$STAGE"; die "$name manifest is unreadable after download" 10; }
+  log "staged $name revision $rev"
+done
+
+# Upstream leaves the archive behind (issue filed); drop it before the swap so the appliance
+# never carries a stranded 6 GB tarball.
+find "$STAGE" -type f -name '*.tar.zst' -print -delete >>"$LOG" 2>&1
+
+# --- swap -----------------------------------------------------------------------------------
+# Directory renames within one filesystem: near-atomic per database, and the old copy only goes
+# once the new one is in place.
+step "installing"
+for name in $pending; do
+  old="$db_dir/$name.commec-old"
+  rm -rf "$old"
+  if [ -d "$db_dir/$name" ]; then
+    mv -f "$db_dir/$name" "$old" || { die "could not move aside $db_dir/$name" 11; }
+  fi
+  if ! mv -f "$STAGE/$name" "$db_dir/$name"; then
+    # Put the original back rather than leave the box without a database.
+    [ -d "$old" ] && mv -f "$old" "$db_dir/$name"
+    die "could not install $name - previous copy restored" 11
+  fi
+  rm -rf "$old"
+  chown -R "$db_user:$db_user" "$db_dir/$name" 2>>"$LOG" || log "WARNING: could not set ownership of $db_dir/$name"
+  log "installed $name"
+done
+rm -rf "$STAGE"
+
+# --- record ---------------------------------------------------------------------------------
+step "recording revisions"
+"$PY" - "$REL" "$db_dir" <<'PY'
+import json, os, sys, time
+
+rel_path, db_dir = sys.argv[1], sys.argv[2]
+try:
+    with open(rel_path) as fh:
+        rel = json.load(fh)
+except Exception:
+    rel = {}
+
+current = {}
+for name in sorted(os.listdir(db_dir)):
+    manifest = os.path.join(db_dir, name, "manifest.json")
+    if not os.path.isfile(manifest):
+        continue
+    try:
+        with open(manifest) as fh:
+            current[name] = json.load(fh)["revision"]
+    except Exception:
+        continue
+
+# Keep the pre-update revisions so --rollback has somewhere to go.
+previous = rel.get("databases") or {}
+if previous and previous != current:
+    rel["databases_previous"] = previous
+rel["databases"] = current
+rel["databases_applied"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+with open(rel_path, "w") as fh:
+    json.dump(rel, fh, indent=2)
+    fh.write("\n")
+print("release.json databases:", json.dumps(current))
+PY
+chmod 0644 "$REL"
+
+# The GUI decides at request time whether a preset's databases are present, but it also caches
+# nothing about revisions until restarted; restart so what it reports matches what is on disk.
+systemctl restart commec-gui.service >>"$LOG" 2>&1 || log "note: commec-gui.service not restarted (absent on non-kiosk images?)"
+
+step "database update complete"
+log "=== commec-db-apply done ($mode): $pending ==="
