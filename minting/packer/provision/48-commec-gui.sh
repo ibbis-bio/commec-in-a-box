@@ -209,15 +209,23 @@ NoDisplay=true
 EOF
 chown -R "$KUSER:$KUSER" "$KHOME/.config"
 
-# --- desktop "reopen the console" launcher (for when the operator closes the browser) ---
-# A big, obvious desktop icon that relaunches the kiosk browser at the screening console.
-# Reuses the standard kiosk launcher; the guard makes it a no-op if the browser is still up
-# (so a stray double-click can't trip Firefox's --no-remote "already running" error).
+# --- desktop "reopen the console" launcher ---
+# A big, obvious desktop icon that raises a visible screening console, opens the console in an
+# existing kiosk browser that is displaying something else, or relaunches the browser after it
+# has exited. A desktop launch inherits Firefox's session bus, so a profile-targeted --new-tab
+# call reaches the existing --no-remote instance.
 cat > /usr/local/bin/commec-kiosk-open.sh <<'EOF'
 #!/usr/bin/env bash
-# Reopen the screening console. No-op if the kiosk browser is already running.
-if pgrep -f 'firefox-esr.*commec-kiosk' >/dev/null 2>&1; then
-  exit 0
+# Open the screening console, or reopen the kiosk browser if it has exited.
+if pgrep -f 'firefox-esr.*commec-kiosk' >/dev/null; then
+  window_id="$(
+    wmctrl -lx |
+      awk '$3 == "Navigator.firefox-esr" && /Sequence Screening/ { print $1; exit }'
+  )"
+  if [ -n "$window_id" ]; then
+    exec wmctrl -i -a "$window_id"
+  fi
+  exec firefox-esr -P commec-kiosk --new-tab https://localhost:443/
 fi
 exec /usr/local/bin/commec-kiosk-launch.sh
 EOF
