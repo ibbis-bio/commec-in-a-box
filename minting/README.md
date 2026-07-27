@@ -82,6 +82,18 @@ investigation: `aws/box/power-failure-log.md`.
 - Packages: `qemu-system-x86 qemu-utils ovmf xorriso cloud-image-utils mtools dosfstools gdisk`.
 - Packer binary (pinned, fetched into a local bin; not in Debian repos).
 
+## HTTPS access from another computer
+
+Each box places its public CA certificate at
+`~/Desktop/COMMEC-Box-CA.crt` during graphical login. Copy that file to a
+client computer and import it as a trusted root certificate, then open
+`https://commec-box`. The desktop copy is refreshed at each login if it is
+deleted or modified.
+
+The public certificate is safe to distribute to client computers. The CA
+private key remains under the COMMEC user's mkcert data directory and must
+never be copied from the box.
+
 ## License
 
 This project is MIT-licensed; see the repository [`LICENSE`](../LICENSE). The screening, update, and MITOSIS

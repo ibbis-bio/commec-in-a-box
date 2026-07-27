@@ -172,15 +172,22 @@ user_pref("browser.messaging-system.whatsNewPanel.enabled", false);
 user_pref("browser.shell.checkDefaultBrowser", false);
 PREFS
 fi
+
+for _ in $(seq 1 90); do curl -ksS -o /dev/null "$URL" && break; sleep 2; done
+
 # Trust the per-device mkcert CA in THIS profile so the mkcert-issued server cert (gen-cert.sh,
 # same CAROOT) validates with no browser warning. Add the CA directly with certutil, which creates
 # cert9.db in the dedicated profile if absent and does not need system-wide root access.
 CAROOT="$(mkcert -CAROOT 2>/dev/null)"
-if [ -n "$CAROOT" ] && [ -f "$CAROOT/rootCA.pem" ] && [ -d "$PROFILE_DIR" ]; then
-  certutil -A -n commec-mkcert -t C,, -i "$CAROOT/rootCA.pem" -d sql:"$PROFILE_DIR" >/dev/null 2>&1 || true
+if [ -n "$CAROOT" ] && [ -f "$CAROOT/rootCA.pem" ]; then
+  if [ -d "$PROFILE_DIR" ]; then
+    certutil -A -n commec-mkcert -t C,, -i "$CAROOT/rootCA.pem" -d sql:"$PROFILE_DIR" >/dev/null 2>&1 || true
+  fi
+  # Refresh a public-only copy at each graphical login so an operator can move it to LAN clients.
+  # Never expose rootCA-key.pem: clients need only the CA certificate.
+  install -m 0644 "$CAROOT/rootCA.pem" "$HOME/Desktop/COMMEC-Box-CA.crt"
 fi
 
-for _ in $(seq 1 90); do curl -ksS -o /dev/null "$URL" && break; sleep 2; done
 # Prefer the named profile (registered in profiles.ini, so mkcert trusted its cert db). If
 # -CreateProfile didn't produce it, fall back to --profile <dir>, which self-creates a usable
 # profile at launch - the kiosk still comes up (a cert warning is the worst case), never a
