@@ -114,7 +114,10 @@ w_want = max((len(r[2]) for r in rows), default=0)
 lines = [f"{n:<{w_name}}  {h:>{w_have}} -> {w:<{w_want}}  {s}".rstrip()
          for n, h, w, s in rows]
 
-text = "The following updates are available:\n\n<tt>" + "\n".join(lines) + "</tt>"
+text = (
+    "<b>Do NOT start a screening run until the update-complete message appears.</b>\n\n"
+    "The following updates are available:\n\n<tt>" + "\n".join(lines) + "</tt>"
+)
 
 download = state.get("db_download_bytes") or 0
 required = state.get("db_required_bytes") or 0
