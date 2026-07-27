@@ -231,7 +231,7 @@ Type=Application
 Name=Open Commec Screening
 Comment=Reopen the screening console if the window was closed
 Exec=/usr/local/bin/commec-kiosk-open.sh
-Icon=firefox-esr
+Icon=/usr/share/commec/icons/commec-screening.svg
 Terminal=false
 Categories=Application;
 EOF

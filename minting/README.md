@@ -81,3 +81,10 @@ investigation: `aws/box/power-failure-log.md`.
 - KVM access: user in `kvm` group.
 - Packages: `qemu-system-x86 qemu-utils ovmf xorriso cloud-image-utils mtools dosfstools gdisk`.
 - Packer binary (pinned, fetched into a local bin; not in Debian repos).
+
+## License
+
+This project is MIT-licensed; see the repository [`LICENSE`](../LICENSE). The screening, update, and MITOSIS
+desktop icons adapt paths from the MIT-licensed Tabler Icons project. Their upstream copyright,
+license, and pinned source revision are recorded in
+[`assets/icons/LICENSE.tabler-icons`](assets/icons/LICENSE.tabler-icons).

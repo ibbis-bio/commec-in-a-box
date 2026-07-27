@@ -120,7 +120,7 @@ Type=Application
 Name=Update Commec
 Comment=Check online for a newer commec and install it
 Exec=/usr/local/bin/commec-update-now.sh
-Icon=system-software-update
+Icon=/usr/share/commec/icons/commec-update.svg
 Terminal=false
 Categories=Application;
 EOF

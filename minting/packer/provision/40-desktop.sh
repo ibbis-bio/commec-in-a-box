@@ -25,7 +25,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
   xorg xfce4 xfce4-goodies lightdm \
   conky-all lm-sensors x11-xserver-utils xfconf dbus-x11 \
-  gnome-disk-utility mate-polkit-bin \
+  gnome-disk-utility librsvg2-common mate-polkit-bin \
   network-manager-gnome \
   firmware-amd-graphics firmware-iwlwifi firmware-realtek firmware-mediatek \
   firmware-atheros firmware-brcm80211 firmware-misc-nonfree
@@ -93,6 +93,11 @@ chmod 0755 /usr/local/bin/commec-desktop-setup.sh
 install -m 0755 /tmp/assets/commec-mitosis /usr/local/bin/commec-mitosis
 install -d "$USER_HOME/Desktop"
 install -m 0755 /tmp/assets/MITOSIS.desktop "$USER_HOME/Desktop/MITOSIS.desktop"
+install -d /usr/share/commec/icons /usr/share/doc/commec-box
+install -m 0644 /tmp/assets/icons/commec-screening.svg /usr/share/commec/icons/
+install -m 0644 /tmp/assets/icons/commec-update.svg /usr/share/commec/icons/
+install -m 0644 /tmp/assets/icons/mitosis.svg /usr/share/commec/icons/
+install -m 0644 /tmp/assets/icons/LICENSE.tabler-icons /usr/share/doc/commec-box/
 
 # conky: network-listing + temperature helpers + config.
 install -m 0755 /tmp/assets/commec-conky-net.sh /usr/local/bin/commec-conky-net
