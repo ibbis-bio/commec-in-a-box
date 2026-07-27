@@ -91,8 +91,6 @@ systemctl enable nftables.service
 
 # --- GUI server: systemd service (lan.sh -> 0.0.0.0:443 HTTPS), gated on first boot + password ---
 # PATH includes miniconda so lan.sh's `conda info --base` resolves under the minimal service env.
-# ExecStartPre runs mkcert -install (idempotent) so the per-device CA is trusted before --tls-auto
-# issues the cert. (Firefox NSS trust also needs the user's profile to exist - see the launcher.)
 # Do not use ConditionPathExists for these guards: systemd does not re-attempt a skipped unit when
 # a condition file later appears. A blocking pre-start keeps this unit pending until first boot
 # finished and the operator password (and its GUI hash) were recorded. If either setup phase
@@ -111,7 +109,6 @@ Environment=PATH=$CONDA/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=$KHOME
 TimeoutStartSec=0
 ExecStartPre=/bin/bash -c 'until [ -e /var/lib/commec/firstboot.done ] && [ -e /var/lib/commec/password.done ]; do sleep 2; done'
-ExecStartPre=-/bin/bash -c 'mkcert -install || true'
 ExecStart=/bin/bash $GUI/lan.sh
 Restart=on-failure
 RestartSec=5
@@ -176,10 +173,8 @@ user_pref("browser.shell.checkDefaultBrowser", false);
 PREFS
 fi
 # Trust the per-device mkcert CA in THIS profile so the mkcert-issued server cert (gen-cert.sh,
-# same CAROOT) validates with no browser warning. `mkcert -install` targets Firefox's *default*
-# profile and needs an already-initialized cert db, so it misses our fresh dedicated profile;
-# add the CA directly with certutil, which creates cert9.db in the profile if absent.
-mkcert -install >/dev/null 2>&1 || true
+# same CAROOT) validates with no browser warning. Add the CA directly with certutil, which creates
+# cert9.db in the dedicated profile if absent and does not need system-wide root access.
 CAROOT="$(mkcert -CAROOT 2>/dev/null)"
 if [ -n "$CAROOT" ] && [ -f "$CAROOT/rootCA.pem" ] && [ -d "$PROFILE_DIR" ]; then
   certutil -A -n commec-mkcert -t C,, -i "$CAROOT/rootCA.pem" -d sql:"$PROFILE_DIR" >/dev/null 2>&1 || true

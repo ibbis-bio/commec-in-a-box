@@ -30,6 +30,11 @@ if [ -f /etc/default/grub ]; then
 fi
 update-grub
 
+# Keep ttyS0 kernel output for headless VM diagnostics, but do not spawn an interactive login
+# prompt there. Some bare-metal systems expose a non-functional legacy UART: opening /dev/ttyS0
+# succeeds, then agetty's terminal setup fails and systemd restarts it indefinitely.
+systemctl mask serial-getty@ttyS0.service
+
 # Networking portability: the build VM NIC (ens3) differs from the target's (eno1),
 # and the cloud image's per-interface config won't carry over. Hand networking to
 # NetworkManager (DHCP on whatever NIC the target has). ENABLE ONLY - do not restart
