@@ -163,19 +163,30 @@ install_software() {  # $1 = version; returns the helper's exit status
 }
 
 install_databases() {  # returns the helper's exit status
-  local rc errfile rcfile
+  local rc errfile rcfile raw progress
   # Two files, deliberately: the helper's exit status is written with > (truncating), so it
   # must not share a file with the ERROR lines the translator appends.
   errfile=$(mktemp); rcfile=$(mktemp)
   # commec-db-apply speaks a small line protocol (PROGRESS/STEP/ERROR); translate it into
   # yad's (a bare number sets the bar, "#text" sets the label) so the operator sees real
-  # download progress rather than a pulsating bar that says nothing.
-  ( sudo -n /usr/local/sbin/commec-db-apply; echo "$?" >"$rcfile" ) 2>>"$UILOG" | \
+  # download progress rather than a pulsating bar that says nothing. Downloads occupy the
+  # first 83% of the bar; 100% is reserved for the helper's actual completion, after verify,
+  # swap, and revision recording have finished.
+  ( sudo -n /usr/local/sbin/commec-db-apply; rc=$?; printf '%s\n' "$rc" >"$rcfile"; printf 'COMPLETE\n' ) 2>>"$UILOG" | \
     while IFS= read -r line; do
       case "$line" in
-        PROGRESS\ *) set -- $line; printf '%s\n' "$2"; printf '#Downloading %s (%s%%)\n' "${3:-database}" "$2" ;;
+        PROGRESS\ *)
+          set -- $line
+          raw=$2
+          case "$raw" in ''|*[!0-9]*) continue ;; esac
+          [ "$raw" -le 100 ] || raw=100
+          progress=$((raw * 83 / 100))
+          printf '%s\n' "$progress"
+          printf '#Downloading %s (%s%%)\n' "${3:-database}" "$raw"
+          ;;
         STEP\ *)     printf '#%s\n' "${line#STEP }" ;;
         ERROR\ *)    printf '%s\n' "${line#ERROR }" >>"$errfile" ;;
+        COMPLETE)    printf '100\n' ;;
       esac
     done | \
     yad --title="Updating databases" --progress --auto-close --auto-kill \
