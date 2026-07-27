@@ -149,6 +149,7 @@ install_software() {  # $1 = version; returns the helper's exit status
   ( sudo -n /usr/local/sbin/commec-update-apply "$ver" ) 2>&1 | \
     yad --title="Installing commec $ver" --progress --pulsate --auto-close --auto-kill \
         --on-top --sticky --center --width=460 --no-buttons \
+        --progress-text="Working..." \
         --text="Installing commec $ver - please wait..." >/dev/null 2>&1 &
   raise_above "Installing commec"
   wait
@@ -192,6 +193,10 @@ prompt_and_install() {
       --button="Later:1" --button="Install now:0" >/dev/null 2>&1
   [ $? = 0 ] || return 0
 
+  # The prompt can remain open indefinitely. Re-check immediately before any apply helper so a
+  # screening run started after the channel check is still protected.
+  screen_update_allowed || return 0
+
   local failures="" sw_ver
   sw_ver=$(state_field 'd["commec"]["latest"] if d.get("commec",{}).get("update") else ""')
 
@@ -218,6 +223,11 @@ prompt_and_install() {
     info_dialog "Update complete.\n\ncommec: <b>$(release_version)</b>\nNew terminals use it immediately." 20
   fi
 }
+
+# Refuse immediately while screening rather than making the operator wait for the network and
+# conda checks. The available case checks again after that slow work, and prompt_and_install
+# checks once more after confirmation, closing the intervening race windows.
+screen_update_allowed || exit 0
 
 st=$(check_with_progress "Checking software and database updates...")
 case "$st" in
