@@ -25,6 +25,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
   xorg xfce4 xfce4-goodies lightdm \
   conky-all lm-sensors x11-xserver-utils xfconf dbus-x11 \
+  gnome-disk-utility mate-polkit-bin \
   network-manager-gnome \
   firmware-amd-graphics firmware-iwlwifi firmware-realtek firmware-mediatek \
   firmware-atheros firmware-brcm80211 firmware-misc-nonfree
@@ -87,6 +88,12 @@ xfconf-query -c xfce4-desktop -p /desktop-icons/icon-size -n -t uint -s 96 2>/de
 EOF
 chmod 0755 /usr/local/bin/commec-desktop-setup.sh
 
+# MITOSIS delegates target selection, authorization, unmounting, and writing to GNOME Disks.
+# It deliberately contains no raw-device handling of its own.
+install -m 0755 /tmp/assets/commec-mitosis /usr/local/bin/commec-mitosis
+install -d "$USER_HOME/Desktop"
+install -m 0755 /tmp/assets/MITOSIS.desktop "$USER_HOME/Desktop/MITOSIS.desktop"
+
 # conky: network-listing + temperature helpers + config.
 install -m 0755 /tmp/assets/commec-conky-net.sh /usr/local/bin/commec-conky-net
 install -m 0755 /tmp/assets/commec-conky-temp.sh /usr/local/bin/commec-conky-temp
@@ -114,5 +121,5 @@ X-GNOME-Autostart-enabled=true
 NoDisplay=true
 EOF
 
-chown -R commec-user:commec-user "$USER_HOME/.config"
+chown -R commec-user:commec-user "$USER_HOME/.config" "$USER_HOME/Desktop"
 echo "40-desktop done"

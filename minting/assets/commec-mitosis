@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -u
+
+image=$(zenity --file-selection \
+  --title="MITOSIS - Select an OS image" \
+  --file-filter="Disk images | *.img *.iso *.raw" \
+  --file-filter="All files | *") || exit 0
+
+exec gnome-disks --restore-disk-image "$image"

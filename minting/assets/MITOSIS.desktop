@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MITOSIS
+Comment=Create an OS reflash USB drive
+Exec=/usr/local/bin/commec-mitosis
+Icon=drive-removable-media-usb
+Terminal=false
+Categories=System;
