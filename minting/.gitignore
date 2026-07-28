@@ -20,4 +20,5 @@ crash.log
 # wrap/ working dir + deployment artifacts
 _work/
 wrap/_work/
+_release/
 *.img
