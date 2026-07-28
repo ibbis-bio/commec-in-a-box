@@ -32,6 +32,15 @@ STATE="$RUNTIME/commec-update.json"
 # failure mode of this system (it surfaces only as a wrong conky label), so keep the stderr.
 CHECKLOG="$RUNTIME/commec-update-check.log"
 DB_STATUS_HELPER="${COMMEC_DB_STATUS:-/usr/local/lib/commec-box/commec-db-status.py}"
+FIRSTBOOT_GUARD="${COMMEC_FIRSTBOOT_GUARD:-/var/lib/commec/firstboot.done}"
+
+# Database manifests are incomplete while first boot is still unpacking best_match. A check in
+# that window would cache a false "database available" result until the next poll. Leave no
+# result so Conky reports "checking..." until the appliance is actually ready to assess.
+if [ ! -e "$FIRSTBOOT_GUARD" ]; then
+  rm -f "$STATUS" "$STATE"
+  exit 0
+fi
 
 # Defaults (overridable in update.conf)
 conda_channels="conda-forge,bioconda"

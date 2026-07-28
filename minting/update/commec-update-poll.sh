@@ -6,11 +6,15 @@
 set -u
 
 CONF=/etc/commec-box/update.conf
+FIRSTBOOT_GUARD=/var/lib/commec/firstboot.done
 poll_interval=1800
 startup_delay=20
 [ -r "$CONF" ] && . "$CONF"
 
 sleep "$startup_delay"
+while [ ! -e "$FIRSTBOOT_GUARD" ]; do
+  sleep 3
+done
 while :; do
   /usr/local/bin/commec-update-check >/dev/null 2>&1
   sleep "$poll_interval"
