@@ -15,8 +15,8 @@ minting/
     provision/        provisioning scripts (apt, miniconda, commec, desktop, db staging)
   assets/             wallpaper image + conky.conf (desktop overlay)
   firstboot/          systemd oneshot: set password, lock root, grow disk, decompress DBs
-  everyboot/          boots to XFCE desktop (wallpaper + conky); future: commec-gui
   wrap/               Clonezilla unattended deployment-USB builder
+  release/            compressed, split GitHub release assets + reassembly helper
   downloads/          fetched inputs (gitignored)
 ```
 
@@ -24,23 +24,20 @@ minting/
 
 - Debian 13 genericcloud qcow2, build 20260615-2510
 - Miniconda py312_26.3.2-2
-- commec 1.0.5 (bioconda) + a build-time conda lockfile
-- commec-databases v1.1.0 (biorisk + low_concern, ~313 MB)
-- main BLAST DBs (staged): nr.tar (BLAST nr) + core_nt.tar (BLAST core_nt),
-  ~82 GB compressed / ~298 GB decompressed. Working copies on the COMMEC
-  external at /mnt/commec/dbs-staging.
+- commec 2.1.0.dev0 candidate from the exact pinned GUI commit, with the runtime
+  updater pointed at the production conda-forge + bioconda channels
+- commec databases from the stable R2 manifest: biorisk, low_concern,
+  control_lists, and best_match
 - Packer 1.15.4
-- Clonezilla (TBD)
+- Clonezilla 3.3.2-31
 
 ## DB layout commec expects (target, base_paths.default)
 
 ```
-<db>/biorisk/...            from commec-dbs.zip
-<db>/low_concern/...        from commec-dbs.zip
-<db>/nr_blast/nr            from nr.tar         (BLAST protein; default protein_search_tool=blastx)
-<db>/nt_blast/core_nt       from core_nt.tar    (BLAST nucleotide)
-<db>/taxonomy/              NCBI taxdump
-<db>/nr_dmnd/nr.dmnd        NOT provided (optional DIAMOND protein path)
+<db>/biorisk/...
+<db>/low_concern/...
+<db>/control_lists/...
+<db>/best_match/...
 ```
 
 ## Pipeline phases
@@ -50,10 +47,12 @@ minting/
    the master small enough for the deployment stick). Output: qcow2 master.
 2. **First boot** (`firstboot/`): force password, lock root, grow partition to fill
    the real 512 GB disk, then stream-decompress the DBs, set the done-flag, disable.
-3. **Every boot** (`everyboot/`): placeholder terminal (future commec-gui).
-4. **Wrap** (`wrap/`): Clonezilla unattended restore image -> bootable deployment stick
-   (nominal 128 GB media; the disk image is sized ~90G to fit real "128 GB" sticks).
+3. **Every boot**: XFCE desktop, kiosk GUI, HTTPS certificate export, update status,
+   and operator launchers.
+4. **Wrap** (`wrap/`): Clonezilla unattended restore image -> 24 GiB bootable
+   deployment image for a nominal 32 GB USB drive.
 5. **Test**: VM (qemu, blank 512 GB disk) then metal (ThinkCentre M75q Gen 2).
+6. **Package** (`release/`): zstd-compressed, checksummed GitHub release assets.
 
 ## Hardware power tuning (IMPORTANT - hardware-dependent, set in `provision/00-base.sh`)
 

@@ -1,33 +1,36 @@
 #!/usr/bin/env bash
-# Build a DEV commec conda package from the gui branch into a LOCAL channel and serve it over
-# HTTP on the tailnet, so a commec-in-a-box *devel* box can exercise the update flow end-to-end.
+# Build an unreleased commec conda package from the exact source commit in pins.json. The package
+# is indexed both in a host-side test channel and in packer/devchannel for the appliance mint.
+# Set SERVE=1 to serve the host-side channel for update-flow tests.
 #
-# It feeds two consumers: (1) the mint - copy the built .conda into packer/devchannel/, which
-# 20-commec.sh installs from file:///tmp/devchannel (COMMEC_SOURCE=gui); this is the only way the
-# appliance gets an unreleased commec 1.1.0.dev*. (2) the update-flow dry run - the served :8000
-# channel is what a devel box's updater points at to test an A/B update.
+# Usage:  ./commec-devbuild.sh
+#         ./commec-devbuild.sh 2.1.0.dev1
+#         SERVE=1 PORT=8000 ./commec-devbuild.sh 2.1.0.dev1
 #
-# RELEASE-SAFE: everything is local. It never pushes, never tags, never dispatches CI, and never
-# uploads to bioconda/anaconda. The only things that cut a real release are (a) publishing a
-# GitHub Release or (b) manually running the "Automate Release" workflow_dispatch - neither
-# happens here. The version bump is a local edit to a throwaway clone, not committed.
-#
-# Usage:  ./commec-devbuild.sh <devversion>        e.g. 1.1.0.dev2  (must sort ABOVE the box's version)
-#         BRANCH=gui PORT=8000 ./commec-devbuild.sh 1.1.0.dev2
-# Re-run with a higher devN to make the box's updater prompt again.
+# This script only modifies a throwaway clone and local channels. It never pushes, tags, uploads,
+# or dispatches an upstream release.
 set -euo pipefail
 
-DEVVER="${1:?usage: commec-devbuild.sh <devversion, e.g. 1.1.0.dev2>}"
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PINS="$HERE/pins.json"
+pin() { python3 -c "import json;print(json.load(open('$PINS'))$1)"; }
+
+DEVVER="${1:-$(pin "['commec']['candidate']['version']")}"
 case "$DEVVER" in *[!A-Za-z0-9.+_-]*) echo "bad version string: $DEVVER"; exit 2 ;; esac
-BRANCH="${BRANCH:-gui}"
+BRANCH="${BRANCH:-$(pin "['commec']['gui_shim']['branch']")}"
+COMMIT="${COMMIT:-$(pin "['commec']['gui_shim']['commit']")}"
 PORT="${PORT:-8000}"
 WORK="${WORK:-$HOME/commec-devbuild}"
 REPO="$WORK/common-mechanism"
 CH="$WORK/channel"
+STAGE_MINT="${STAGE_MINT:-1}"
+SERVE="${SERVE:-0}"
 
 # Locate conda (needs conda + conda-build on the mint host)
 CONDA="${CONDA:-}"
-[ -z "$CONDA" ] && CONDA=$(command -v conda 2>/dev/null || true)
+if [ -z "$CONDA" ] && command -v conda >/dev/null; then
+  CONDA=$(command -v conda)
+fi
 for p in "$HOME/miniconda3/bin/conda" "$HOME/miniconda/bin/conda" /opt/miniconda/bin/conda /opt/conda/bin/conda; do
   [ -z "$CONDA" ] && [ -x "$p" ] && CONDA="$p"
 done
@@ -35,16 +38,22 @@ done
 echo "using conda: $CONDA"
 mkdir -p "$WORK"
 
-echo "== fetch gui branch =="
+echo "== fetch pinned source =="
 if [ -d "$REPO/.git" ]; then
   git -C "$REPO" fetch origin "$BRANCH"
 else
-  git clone -b "$BRANCH" https://github.com/ibbis-bio/common-mechanism "$REPO"
+  git clone --no-checkout https://github.com/ibbis-bio/common-mechanism "$REPO"
+  git -C "$REPO" fetch origin "$BRANCH"
 fi
-git -C "$REPO" checkout "$BRANCH"
-git -C "$REPO" reset --hard "origin/$BRANCH"
-SHA=$(git -C "$REPO" rev-parse --short HEAD)
-echo "gui @ $SHA"
+git -C "$REPO" merge-base --is-ancestor "$COMMIT" "origin/$BRANCH" || {
+  echo "ERROR: pinned commit $COMMIT is not reachable from origin/$BRANCH" >&2
+  exit 1
+}
+git -C "$REPO" reset --hard
+git -C "$REPO" clean -fdx
+git -C "$REPO" checkout --detach "$COMMIT"
+SHA=$(git -C "$REPO" rev-parse HEAD)
+echo "source @ $SHA"
 
 echo "== set LOCAL dev version $DEVVER (throwaway edit, not committed) =="
 sed -i "s/{% set version = \".*\" %}/{% set version = \"$DEVVER\" %}/" "$REPO/conda-recipe/meta.yaml"
@@ -61,18 +70,47 @@ grep -q "^version = \"$DEVVER\"$" "$REPO/pyproject.toml" || \
 # release URL (v{{version}}.tar.gz) with a pinned sha256, so a dev version has no matching release
 # and conda-build errors ("Empty sha256"). Point source at the parent dir (the checked-out gui).
 sed -i -e '/^  url: /d' -e 's|^  sha256:.*|  path: ..|' "$REPO/conda-recipe/meta.yaml"
-# The commec-gui server (commec/gui/server.py) needs flask + werkzeug + psutil, but the recipe's
-# run: deps omit them, so an updated env (conda create commec=<ver>) would break the kiosk. Add them
-# so the package carries its server deps. NB: fold this into the gui branch's conda-recipe/meta.yaml.
-grep -q '^    - flask$' "$REPO/conda-recipe/meta.yaml" || \
-  sed -i '/^    - pyyaml$/a\    - flask\n    - werkzeug\n    - psutil' "$REPO/conda-recipe/meta.yaml"
+for dep in flask werkzeug psutil; do
+  grep -q "^    - ${dep}$" "$REPO/conda-recipe/meta.yaml" || {
+    echo "ERROR: pinned conda recipe is missing runtime dependency: $dep" >&2
+    exit 1
+  }
+done
 
 echo "== conda build (no upload) into local channel $CH =="
-command -v conda-build >/dev/null 2>&1 || "$CONDA" run -n base conda-build --version >/dev/null 2>&1 || "$CONDA" install -y -n base conda-build
+"$CONDA" run -n base conda-build --version >/dev/null || "$CONDA" install -y -n base conda-build
 "$CONDA" build --no-anaconda-upload -c conda-forge -c bioconda --output-folder "$CH" "$REPO/conda-recipe"
 "$CONDA" index "$CH"
 
-IP=$(tailscale ip -4 2>/dev/null | head -1 || hostname -I | awk '{print $1}')
+mapfile -t PACKAGES < <(find "$CH/noarch" -maxdepth 1 -type f -name "commec-${DEVVER}-*.conda" -print)
+[ "${#PACKAGES[@]}" -eq 1 ] || {
+  echo "ERROR: expected exactly one commec $DEVVER package, found ${#PACKAGES[@]}" >&2
+  printf '  %s\n' "${PACKAGES[@]}" >&2
+  exit 1
+}
+PACKAGE="${PACKAGES[0]}"
+PACKAGE_SHA=$(sha256sum "$PACKAGE" | awk '{print $1}')
+echo "package: $(basename "$PACKAGE")"
+echo "sha256: $PACKAGE_SHA"
+
+if [ "$STAGE_MINT" = "1" ]; then
+  mkdir -p "$HERE/packer/devchannel/noarch"
+  find "$HERE/packer/devchannel/noarch" -maxdepth 1 -type f -name 'commec-*.conda' -delete
+  cp -f "$PACKAGE" "$HERE/packer/devchannel/noarch/"
+  "$CONDA" index "$HERE/packer/devchannel"
+  echo "mint channel: $HERE/packer/devchannel"
+elif [ "$STAGE_MINT" != "0" ]; then
+  echo "ERROR: STAGE_MINT must be 0 or 1" >&2
+  exit 2
+fi
+
+[ "$SERVE" = "0" ] && exit 0
+[ "$SERVE" = "1" ] || { echo "ERROR: SERVE must be 0 or 1" >&2; exit 2; }
+
+IP=$(hostname -I | awk '{print $1}')
+if command -v tailscale >/dev/null; then
+  TS_IP=$(tailscale ip -4) && IP=$(printf '%s\n' "$TS_IP" | head -1)
+fi
 echo
 echo "=================================================================="
 echo " commec $DEVVER built. Serving channel at http://$IP:$PORT/"

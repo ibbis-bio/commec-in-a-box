@@ -13,6 +13,8 @@ save.sh         master qcow2  ->  Clonezilla image (in CZ_REPO_IMG:/partimag/<IM
 build-stick.sh  Clonezilla image  ->  bootable deployment-stick disk image
 test-restore.sh restore the image onto a blank disk (VM validation of the restore path)
 flash-stick.sh  deployment-stick image  ->  verified physical USB with a valid backup GPT
+../release/package-image.sh
+                deployment-stick image  ->  split, checksummed GitHub release assets
 ```
 
 ## Key env vars (see lib.sh for all + defaults)
@@ -47,6 +49,24 @@ MASTER_IMAGE=~/commec-build/commec-box-v1.qcow2 ./save.sh
 # 4. flash, read back, repair the backup GPT for the physical media, and validate
 ./flash-stick.sh /dev/sdX
 ```
+
+## GitHub release packaging
+
+GitHub release assets must each be smaller than 2 GiB. Package the deployment image
+into numbered, checksummed parts after the image has passed restore testing:
+
+```bash
+../release/package-image.sh "$WORK_DIR/commec-deploy-stick.img"
+```
+
+Download every asset from the release into one directory, then run:
+
+```bash
+chmod +x reassemble-image.sh
+./reassemble-image.sh
+```
+
+The helper verifies every part and the reconstructed `.img.zst` archive.
 
 ## Notes
 

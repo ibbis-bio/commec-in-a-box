@@ -14,12 +14,11 @@ $CONDA config --system --set channel_priority strict
 $CONDA config --system --remove channels defaults 2>/dev/null || true
 $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
 $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
-# TEMPORARY (gui-branch testing): COMMEC_SOURCE=gui installs a locally-built gui-branch dev package
-# from the baked channel at /tmp/devchannel (staged by commec-devbuild.sh into packer/devchannel/).
-# Revert to the default (bioconda release) before the real gui->develop PR.
+# COMMEC_SOURCE=gui installs the exact candidate package staged by commec-devbuild.sh. Its
+# 2.1.0.dev0 version prevents a downgrade to 2.0.x while remaining older than final 2.1.0.
 if [ "${COMMEC_SOURCE:-stable}" = "gui" ]; then
   $CONDA create -y -n commec-env --override-channels \
-    -c "file:///tmp/devchannel" -c conda-forge -c bioconda "commec=${COMMEC_GUI_VERSION:-1.0.6.dev1}"
+    -c "file:///tmp/devchannel" -c conda-forge -c bioconda "commec=${COMMEC_GUI_VERSION:-2.1.0.dev0}"
 else
   $CONDA create -y -n commec-env --override-channels -c conda-forge -c bioconda "commec=${COMMEC_VERSION}"
 fi
@@ -30,7 +29,7 @@ mkdir -p /opt/commec
 $CONDA list -n commec-env --explicit > /opt/commec/commec.lock
 
 # Sanity: commec resolves and reports its version.
-/opt/miniconda/envs/commec-env/bin/commec --version || true
+/opt/miniconda/envs/commec-env/bin/commec --version
 
 # Auto-activate the env for commec-user (and root, for firstboot convenience).
 ACTIVATE='

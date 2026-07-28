@@ -39,6 +39,64 @@ mkdir -p "$WORK" "$DOWNLOADS" "$SECRETS" "$SEED"
 
 pin() { python3 -c "import json;print(json.load(open('$PINS'))$1)"; }
 
+APPLIANCE_VERSION=$(pin "['commec_in_a_box']['version']")
+CANDIDATE_VERSION=$(pin "['commec']['candidate']['version']")
+STABLE_COMMEC_VERSION=$(pin "['commec']['version']")
+COMMEC_SOURCE="${COMMEC_SOURCE:-gui}"
+COMMEC_CHANNEL="${COMMEC_CHANNEL:-stable}"
+COMMEC_GUI_VERSION="${COMMEC_GUI_VERSION:-$CANDIDATE_VERSION}"
+COMMEC_UPDATE_URL="${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}"
+if [ "$COMMEC_SOURCE" = "gui" ]; then
+  INSTALLED_COMMEC_VERSION="$COMMEC_GUI_VERSION"
+else
+  INSTALLED_COMMEC_VERSION="$STABLE_COMMEC_VERSION"
+fi
+
+case "$COMMEC_SOURCE" in
+  stable|gui) ;;
+  *) echo "ERROR: COMMEC_SOURCE must be stable or gui" >&2; exit 2 ;;
+esac
+case "$COMMEC_CHANNEL" in
+  stable|devel) ;;
+  *) echo "ERROR: COMMEC_CHANNEL must be stable or devel" >&2; exit 2 ;;
+esac
+
+verify_candidate_package() {
+  [ "$COMMEC_SOURCE" = "gui" ] || return
+
+  local pinned_file pinned_sha package repodata got
+  [ "$COMMEC_GUI_VERSION" = "$CANDIDATE_VERSION" ] || {
+    echo "ERROR: COMMEC_GUI_VERSION=$COMMEC_GUI_VERSION is not the pinned candidate $CANDIDATE_VERSION" >&2
+    echo "Bump commec.candidate in pins.json and rebuild it with minting/commec-devbuild.sh." >&2
+    exit 1
+  }
+  pinned_file=$(pin "['commec']['candidate']['file']")
+  pinned_sha=$(pin "['commec']['candidate']['sha256']")
+  package="$HERE/devchannel/noarch/$pinned_file"
+  repodata="$HERE/devchannel/noarch/repodata.json"
+  [ -f "$package" ] || {
+    echo "ERROR: pinned candidate package is missing: $package" >&2
+    echo "Run minting/commec-devbuild.sh before minting." >&2
+    exit 1
+  }
+  got=$(sha256sum "$package" | awk '{print $1}')
+  [ "$got" = "$pinned_sha" ] || {
+    echo "ERROR: candidate package hash mismatch: got $got want $pinned_sha" >&2
+    exit 1
+  }
+  python3 - "$repodata" "$pinned_file" "$CANDIDATE_VERSION" "$pinned_sha" <<'PY'
+import json
+import sys
+
+path, filename, version, sha256 = sys.argv[1:]
+with open(path) as fh:
+    record = json.load(fh)["packages.conda"][filename]
+if record["version"] != version or record["sha256"] != sha256:
+    raise SystemExit(f"ERROR: candidate channel index disagrees with pins.json: {record}")
+PY
+  echo "verified candidate: $pinned_file"
+}
+
 fetch_verify() { # url  outpath  algo  expected_hash
   local url="$1" out="$2" algo="$3" want="$4" got
   if [ -f "$out" ]; then
@@ -120,19 +178,21 @@ write_colophon() {
   IAB_COMMIT="$head" IAB_SUBJECT="$subject" IAB_DESCRIBE="$describe" IAB_DIRTY="$dirty" \
   BUILT_AT="$built_at" BUILT_BY="$built_by" \
   GUI_REPO="$gui_repo" GUI_BRANCH="$gui_branch" GUI_COMMIT="$gui_commit" \
-  V_COMMEC="$(pin "['commec']['version']")" \
-  V_SOURCE="${COMMEC_SOURCE:-stable}" V_CHANNEL="${COMMEC_CHANNEL:-stable}" \
-  V_GUI="${COMMEC_GUI_VERSION:-1.0.6.dev1}" V_UPDATE_URL="${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}" \
+  V_APPLIANCE="$APPLIANCE_VERSION" V_COMMEC="$INSTALLED_COMMEC_VERSION" \
+  V_STABLE_COMMEC="$STABLE_COMMEC_VERSION" \
+  V_SOURCE="$COMMEC_SOURCE" V_CHANNEL="$COMMEC_CHANNEL" \
+  V_GUI="$COMMEC_GUI_VERSION" V_UPDATE_URL="$COMMEC_UPDATE_URL" \
   BASE_IMAGE="$DEB_FILE" MINICONDA="$MC_FILE" \
   DB_CHANNEL_V="$DB_CHANNEL" DB_BIORISK_REV="$BIORISK_REV" DB_LOW_CONCERN_REV="$LOW_CONCERN_REV" \
   DB_CONTROL_LISTS_REV="$CONTROL_LISTS_REV" DB_BEST_MATCH_REV="$BEST_MATCH_REV" \
   python3 - "$dir/colophon.json" <<'PY'
 import json, os, sys
 m = {
-    "schema": 2,
+    "schema": 3,
     "built_at_utc": os.environ["BUILT_AT"],
     "built_by": os.environ["BUILT_BY"],
     "commec_in_a_box": {
+        "version": os.environ["V_APPLIANCE"],
         "commit": os.environ["IAB_COMMIT"],
         "commit_subject": os.environ["IAB_SUBJECT"],
         "describe": os.environ["IAB_DESCRIBE"],
@@ -145,6 +205,7 @@ m = {
     },
     "build_vars": {
         "commec_version": os.environ["V_COMMEC"],
+        "commec_stable_fallback_version": os.environ["V_STABLE_COMMEC"],
         "commec_source": os.environ["V_SOURCE"],
         "commec_channel": os.environ["V_CHANNEL"],
         "commec_gui_version": os.environ["V_GUI"],
@@ -174,6 +235,7 @@ PY
 }
 
 echo "== 1. pinned inputs =="
+verify_candidate_package
 DEB_FILE=$(pin "['debian_cloud_image']['file']")
 fetch_verify "$(pin "['debian_cloud_image']['url']")" "$DOWNLOADS/$DEB_FILE" sha512 "$(pin "['debian_cloud_image']['sha512']")"
 MC_FILE=$(pin "['miniconda']['file']")
@@ -267,10 +329,10 @@ cd "$HERE"
   -var "biorisk_revision=$BIORISK_REV" \
   -var "low_concern_revision=$LOW_CONCERN_REV" \
   -var "control_lists_revision=$CONTROL_LISTS_REV" \
-  -var "commec_source=${COMMEC_SOURCE:-stable}" \
-  -var "commec_channel=${COMMEC_CHANNEL:-stable}" \
-  -var "commec_gui_version=${COMMEC_GUI_VERSION:-1.1.0.dev1}" \
-  -var "commec_update_url=${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}" \
+  -var "commec_source=$COMMEC_SOURCE" \
+  -var "commec_channel=$COMMEC_CHANNEL" \
+  -var "commec_gui_version=$COMMEC_GUI_VERSION" \
+  -var "commec_update_url=$COMMEC_UPDATE_URL" \
   -var "output_dir=$OUTPUT_DIR" \
   -var "cpus=${CPUS:-4}" \
   commec-box.pkr.hcl

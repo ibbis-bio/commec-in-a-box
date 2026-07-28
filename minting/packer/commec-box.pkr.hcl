@@ -48,10 +48,10 @@ variable "control_lists_revision" {
   default = ""
 }
 
-# --- TEMPORARY: gui-branch testing toggles (revert before the real gui->develop PR) ---
+# --- candidate source and update channel ---
 variable "commec_source" {
   type    = string
-  default = "stable" # "gui" -> install a local gui-branch dev build (20-commec.sh)
+  default = "gui" # "gui" -> install the pinned local candidate (20-commec.sh)
 }
 variable "commec_channel" {
   type    = string
@@ -59,7 +59,7 @@ variable "commec_channel" {
 }
 variable "commec_gui_version" {
   type    = string
-  default = "1.1.0.dev1"
+  default = "2.1.0.dev0"
 }
 variable "commec_update_url" {
   type    = string
@@ -148,8 +148,7 @@ build {
     destination = "/tmp"
   }
 
-  # TEMPORARY (gui-branch testing): a local conda channel baked into the image so 20-commec.sh can
-  # install a gui-branch dev build with COMMEC_SOURCE=gui. Empty (just .gitkeep) for stable builds.
+  # Local conda channel containing the pinned candidate installed when COMMEC_SOURCE=gui.
   provisioner "file" {
     source      = "${path.root}/devchannel"
     destination = "/tmp"

@@ -1,6 +1,10 @@
 {
   "_comment": "Pinned artifacts for the commec-in-a-box minting pipeline. Bump deliberately to upgrade a component; build scripts verify downloads against these hashes at fetch time. Researched 2026-06-22.",
 
+  "commec_in_a_box": {
+    "version": "1.0.0"
+  },
+
   "debian_cloud_image": {
     "_comment": "Build base: Debian 'generic' qcow2 (cloud-init capable, UEFI+BIOS, broader hardware support than 'genericcloud' - chosen because the target is bare metal booting UEFI). We additionally install linux-image-amd64 (generic kernel) + grub-efi during provisioning for full ThinkCentre hardware (amdgpu, NIC).",
     "version": "13 (trixie)",
@@ -18,14 +22,19 @@
   },
 
   "commec": {
-    "_comment": "The commec project (repo common-mechanism). Runtime installs from the bioconda release below; a full conda lockfile is generated into packer/commec.lock at build time for true reproducibility (pinning the version alone does not lock the solve). The kiosk GUI is overlaid via gui_shim until it ships in a release.",
+    "_comment": "The commec project (repo common-mechanism). The appliance installs the candidate package below from its baked local channel while the updater remains pointed at the production conda-forge + bioconda channels. Version 2.1.0.dev0 sorts above every 2.0.x release and below final 2.1.0, so the appliance cannot regress to 2.0.x and switches to the normal release when 2.1.0 is published. A full conda lockfile is generated into packer/commec.lock at build time.",
     "repo": "git@github.com:ibbis-bio/common-mechanism.git",
     "version": "1.0.5",
     "channels": ["conda-forge", "bioconda"],
     "install": "conda install -c conda-forge -c bioconda commec=1.0.5",
     "python": ">=3.10",
+    "candidate": {
+      "version": "2.1.0.dev0",
+      "file": "commec-2.1.0.dev0-py_0.conda",
+      "sha256": "d25810511d285ceb0971820a4d2aa347d3c7bd4366581ac07a568597d6240104"
+    },
     "gui_shim": {
-      "_comment": "TEMPORARY SHIM. The kiosk GUI (the repo's commec/gui/ dir) is not yet in a commec release, so build.sh fetches it from the pinned gui branch of the SAME repo and mirrors it into packer/guisrc/ (a gitignored build artifact - the branch is the single source of truth). Bump 'commit' to pull GUI updates. Delete this whole object once gui merges to main and ships inside the version above; the GUI then loads from the installed package (see the removal recipe in build.sh's fetch_gui).",
+      "_comment": "The kiosk GUI source and candidate conda package come from this exact commit of the same repository. build.sh mirrors commec/gui into packer/guisrc as a gitignored build artifact. Remove this shim after the GUI ships in the pinned production commec release.",
       "branch": "gui",
       "commit": "b1095fc43f234baa93dc9f2bfa3809d039da2965"
     }
