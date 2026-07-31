@@ -2,7 +2,7 @@
   "_comment": "Pinned artifacts for the commec-in-a-box minting pipeline. Bump deliberately to upgrade a component; build scripts verify downloads against these hashes at fetch time. Researched 2026-06-22.",
 
   "commec_in_a_box": {
-    "version": "1.0.0"
+    "version": "1.0.1"
   },
 
   "debian_cloud_image": {
