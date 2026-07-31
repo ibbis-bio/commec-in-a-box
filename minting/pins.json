@@ -22,21 +22,21 @@
   },
 
   "commec": {
-    "_comment": "The commec project (repo common-mechanism). The appliance installs the candidate package below from its baked local channel while the updater remains pointed at the production conda-forge + bioconda channels. Version 2.1.0.dev0 sorts above every 2.0.x release and below final 2.1.0, so the appliance cannot regress to 2.0.x and switches to the normal release when 2.1.0 is published. A full conda lockfile is generated into packer/commec.lock at build time.",
+    "_comment": "The commec project (repo common-mechanism). The appliance installs the candidate package below from its baked local channel while the updater remains pointed at the production conda-forge + bioconda channels. Version 2.1.0.dev1 sorts above every 2.0.x release and below final 2.1.0, so the appliance cannot regress to 2.0.x and switches to the normal release when 2.1.0 is published. A full conda lockfile is generated into packer/commec.lock at build time.",
     "repo": "git@github.com:ibbis-bio/common-mechanism.git",
     "version": "1.0.5",
     "channels": ["conda-forge", "bioconda"],
     "install": "conda install -c conda-forge -c bioconda commec=1.0.5",
     "python": ">=3.10",
     "candidate": {
-      "version": "2.1.0.dev0",
-      "file": "commec-2.1.0.dev0-py_0.conda",
-      "sha256": "d25810511d285ceb0971820a4d2aa347d3c7bd4366581ac07a568597d6240104"
+      "version": "2.1.0.dev1",
+      "file": "commec-2.1.0.dev1-py_0.conda",
+      "sha256": "25f0bf41870a882603d6484c1020d38ecae1fe08975e7a7eb43fb872cc1b5fc2"
     },
     "gui_shim": {
       "_comment": "The kiosk GUI source and candidate conda package come from this exact commit of the same repository. build.sh mirrors commec/gui into packer/guisrc as a gitignored build artifact. Remove this shim after the GUI ships in the pinned production commec release.",
       "branch": "gui",
-      "commit": "b1095fc43f234baa93dc9f2bfa3809d039da2965"
+      "commit": "2ee9b87e6cc9dce6aff3f8cd4c6d8fe3fd08b833"
     }
   },
 

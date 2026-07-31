@@ -59,7 +59,7 @@ variable "commec_channel" {
 }
 variable "commec_gui_version" {
   type    = string
-  default = "2.1.0.dev0"
+  default = "2.1.0.dev1"
 }
 variable "commec_update_url" {
   type    = string

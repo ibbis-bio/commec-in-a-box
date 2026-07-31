@@ -70,7 +70,7 @@ grep -q "^version = \"$DEVVER\"$" "$REPO/pyproject.toml" || \
 # release URL (v{{version}}.tar.gz) with a pinned sha256, so a dev version has no matching release
 # and conda-build errors ("Empty sha256"). Point source at the parent dir (the checked-out gui).
 sed -i -e '/^  url: /d' -e 's|^  sha256:.*|  path: ..|' "$REPO/conda-recipe/meta.yaml"
-for dep in flask werkzeug psutil; do
+for dep in flask openpyxl psutil werkzeug xlrd; do
   grep -q "^    - ${dep}$" "$REPO/conda-recipe/meta.yaml" || {
     echo "ERROR: pinned conda recipe is missing runtime dependency: $dep" >&2
     exit 1

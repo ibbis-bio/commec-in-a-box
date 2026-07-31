@@ -7,7 +7,7 @@ minting/packer/devchannel/*
 !minting/packer/devchannel/.gitkeep
 !minting/packer/devchannel/noarch/
 minting/packer/devchannel/noarch/*
-!minting/packer/devchannel/noarch/commec-2.1.0.dev0-py_0.conda
+!minting/packer/devchannel/noarch/commec-2.1.0.dev1-py_0.conda
 !minting/packer/devchannel/noarch/repodata.json
 !minting/packer/devchannel/noarch/repodata_from_packages.json
 

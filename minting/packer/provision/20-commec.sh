@@ -15,10 +15,10 @@ $CONDA config --system --remove channels defaults 2>/dev/null || true
 $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
 $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
 # COMMEC_SOURCE=gui installs the exact candidate package staged by commec-devbuild.sh. Its
-# 2.1.0.dev0 version prevents a downgrade to 2.0.x while remaining older than final 2.1.0.
+# 2.1.0.dev1 version prevents a downgrade to 2.0.x while remaining older than final 2.1.0.
 if [ "${COMMEC_SOURCE:-stable}" = "gui" ]; then
   $CONDA create -y -n commec-env --override-channels \
-    -c "file:///tmp/devchannel" -c conda-forge -c bioconda "commec=${COMMEC_GUI_VERSION:-2.1.0.dev0}"
+    -c "file:///tmp/devchannel" -c conda-forge -c bioconda "commec=${COMMEC_GUI_VERSION:-2.1.0.dev1}"
 else
   $CONDA create -y -n commec-env --override-channels -c conda-forge -c bioconda "commec=${COMMEC_VERSION}"
 fi
