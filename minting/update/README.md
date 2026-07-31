@@ -23,7 +23,8 @@ behind but its latest revision needs a newer commec than is installed, the check
 ## Pieces
 
 - `commec-update-check` (`/usr/local/bin`, runs as the user) - probes reachability, `conda
-  search`es the configured channels, runs the database check, and writes two files into
+  search`es the primary commec channel, falls back to the legacy channels only while the
+  primary contains no commec packages, runs the database check, and writes two files into
   `$XDG_RUNTIME_DIR`: `commec-update.json` (full state: versions, per-database revisions and
   sizes) and `commec-update.status` (one token for cheap readers). Tokens: `up-to-date` |
   `available:sw=<ver>` | `available:db=<n>` | `available:sw=<ver>,db=<n>` | `blocked:<n>` |
@@ -64,10 +65,14 @@ behind but its latest revision needs a newer commec than is installed, the check
   recorded `prev_env` (and also restarts the GUI). Apply and rollback refuse while a screen is
   running; apply rechecks immediately before activation in case one started during the build.
 - `commec-db-apply` (`/usr/local/sbin`, root via NOPASSWD) - the database updater. See below.
-- `update.conf` -> `/etc/commec-box/update.conf` - channels, probe URL, poll timing, and the
-  `db_*` settings (directory, revision channel, free-space margin, owning user, GUI status URL).
+- `update.conf` -> `/etc/commec-box/update.conf` - authoritative commec channel, dependency
+  channels, probe URL, poll timing, and the `db_*` settings (directory, revision channel,
+  free-space margin, owning user, GUI status URL).
 - Installed + wired by `packer/provision/47-update-system.sh` (`commec-patch-config` by
   `30-commec-setup.sh`).
+
+`test-channel-onramp.sh` exercises the primary/fallback selection without network access by
+running the real checker against a fake Conda executable.
 
 ## A/B env model
 

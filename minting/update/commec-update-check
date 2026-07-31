@@ -43,8 +43,9 @@ if [ ! -e "$FIRSTBOOT_GUARD" ]; then
 fi
 
 # Defaults (overridable in update.conf)
-conda_channels="conda-forge,bioconda"
-probe_url="https://conda.anaconda.org"
+commec_primary_channel="ibbis"
+conda_channels="ibbis,conda-forge,bioconda"
+probe_url="https://conda.anaconda.org/ibbis/noarch/repodata.json"
 db_dir=/home/commec-user/commec-dbs
 db_channel=latest
 db_update_enabled=1
@@ -61,10 +62,41 @@ offline_json() {
   "$PY" -c 'import json,sys; print(json.dumps({"online": False, "commec": {}, "databases": {}}))'
 }
 
-# -c args from the comma list
-chan_args=""; oldifs=$IFS; IFS=','
-for c in $conda_channels; do [ -n "$c" ] && chan_args="$chan_args -c $c"; done
-IFS=$oldifs
+search_latest() { # <comma-separated channels>; prints the greatest commec version
+  local channels="$1" chan_args="" oldifs c raw
+  oldifs=$IFS; IFS=','
+  for c in $channels; do [ -n "$c" ] && chan_args="$chan_args -c $c"; done
+  IFS=$oldifs
+  [ -n "$chan_args" ] || return 1
+
+  # Conda returns structured JSON even for the expected empty-channel case. Parse that case
+  # separately (rc=4) so the caller may use the legacy fallback, while malformed output,
+  # timeouts, and other Conda failures remain hard failures (rc=1).
+  raw=$(timeout 120 "$CONDA" search $chan_args '^commec$' --json 2>>"$CHECKLOG")
+  printf '%s' "$raw" | "$PY" -c '
+import json, sys
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+
+packages = data.get("commec", [])
+versions = [p.get("version") for p in packages if p.get("version")]
+if not versions:
+    error = str(data.get("error", ""))
+    exception = str(data.get("exception_name", ""))
+    if "PackagesNotFound" in error or "PackagesNotFound" in exception:
+        raise SystemExit(4)
+    raise SystemExit(1)
+
+try:
+    from conda.models.version import VersionOrder as V
+except Exception:
+    from packaging.version import parse as V
+print(str(max(versions, key=V)))
+'
+}
 
 # Installed version (via the current-env symlink)
 installed=$("$CONDA" list -p "$ENVLINK" '^commec$' --json 2>>"$CHECKLOG" | "$PY" -c '
@@ -84,19 +116,25 @@ if ! curl -fsS --max-time 8 -o /dev/null "$probe_url"; then
   publish offline "$(offline_json)"; exit 0
 fi
 
-# Newest available across the channels (conda version ordering)
-latest=$(timeout 120 "$CONDA" search $chan_args '^commec$' --json 2>>"$CHECKLOG" | "$PY" -c '
-import json,sys
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(1)
-vs=[p.get("version") for p in d.get("commec",[]) if p.get("version")]
-if not vs: sys.exit(1)
-try:    from conda.models.version import VersionOrder as V
-except Exception: from packaging.version import parse as V
-print(str(max(vs, key=V)))')
-
-# Connected but the search failed -> be conservative, treat as offline (do not nag/false-prompt)
-[ -z "$latest" ] && { publish offline "$(offline_json)"; exit 0; }
+# The primary channel becomes authoritative as soon as it contains any commec package. Until
+# then, search all configured channels so already-minted dev builds remain parked above the old
+# Bioconda release and automatically see the first IBBIS release when it appears.
+latest=""; latest_source=""
+if [ -n "$commec_primary_channel" ]; then
+  latest=$(search_latest "$commec_primary_channel")
+  search_rc=$?
+  case "$search_rc" in
+    0) latest_source="$commec_primary_channel" ;;
+    4) ;; # Valid channel with no commec package yet: use the legacy fallback below.
+    *) publish offline "$(offline_json)"; exit 0 ;;
+  esac
+fi
+if [ -z "$latest" ]; then
+  latest=$(search_latest "$conda_channels")
+  search_rc=$?
+  [ "$search_rc" -eq 0 ] || { publish offline "$(offline_json)"; exit 0; }
+  latest_source="fallback"
+fi
 
 sw_newer=$("$PY" -c '
 import sys
@@ -114,10 +152,10 @@ if [ "$db_update_enabled" = "1" ] && [ -x "$ENVLINK/bin/python" ] && [ -r "$DB_S
   db_json=$("$ENVLINK/bin/python" "$DB_STATUS_HELPER" "${db_args[@]}" 2>>"$CHECKLOG")
 fi
 
-state=$("$PY" - "$installed" "$latest" "$sw_newer" "$db_json" <<'PY'
+state=$("$PY" - "$installed" "$latest" "$latest_source" "$sw_newer" "$db_json" <<'PY'
 import json, sys
 
-installed, latest, sw_newer, db_raw = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+installed, latest, latest_source, sw_newer, db_raw = sys.argv[1:]
 try:
     db = json.loads(db_raw) if db_raw else {}
 except ValueError:
@@ -125,7 +163,12 @@ except ValueError:
 
 state = {
     "online": True,
-    "commec": {"installed": installed, "latest": latest, "update": sw_newer == "yes"},
+    "commec": {
+        "installed": installed,
+        "latest": latest,
+        "source": latest_source,
+        "update": sw_newer == "yes",
+    },
     "databases": db.get("databases", {}),
     "db_ok": bool(db.get("ok")),
     "db_error": db.get("error"),

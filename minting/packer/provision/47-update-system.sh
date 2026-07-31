@@ -42,7 +42,8 @@ if [ "${COMMEC_CHANNEL:-stable}" = "devel" ]; then
   # gateway (= the rose host) for the Phase-3 VM test; override with COMMEC_UPDATE_URL for a real box.
   url="${COMMEC_UPDATE_URL:-http://10.0.2.2:8000}"
   sed -i "s|^channel=stable|channel=devel|" /etc/commec-box/update.conf
-  sed -i "s|^conda_channels=.*|conda_channels=${url},conda-forge,bioconda|" /etc/commec-box/update.conf
+  sed -i "s|^commec_primary_channel=.*|commec_primary_channel=${url}|" /etc/commec-box/update.conf
+  sed -i "s|^conda_channels=.*|conda_channels=${url},ibbis,conda-forge,bioconda|" /etc/commec-box/update.conf
   sed -i "s|^probe_url=.*|probe_url=${url}/noarch/repodata.json|" /etc/commec-box/update.conf
 fi
 

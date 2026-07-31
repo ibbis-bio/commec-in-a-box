@@ -22,11 +22,11 @@
   },
 
   "commec": {
-    "_comment": "The commec project (repo common-mechanism). The appliance installs the candidate package below from its baked local channel while the updater remains pointed at the production conda-forge + bioconda channels. Version 2.1.0.dev1 sorts above every 2.0.x release and below final 2.1.0, so the appliance cannot regress to 2.0.x and switches to the normal release when 2.1.0 is published. A full conda lockfile is generated into packer/commec.lock at build time.",
+    "_comment": "The commec project (repo common-mechanism). The appliance installs the candidate package below from its baked local channel while the updater tracks IBBIS as the primary commec channel and retains conda-forge + bioconda for dependencies. Version 2.1.0.dev1 sorts above every 2.0.x release and below final 2.1.0, so the appliance cannot regress to 2.0.x and switches to the normal release when 2.1.0 is published. A full conda lockfile is generated into packer/commec.lock at build time.",
     "repo": "git@github.com:ibbis-bio/common-mechanism.git",
     "version": "1.0.5",
-    "channels": ["conda-forge", "bioconda"],
-    "install": "conda install -c conda-forge -c bioconda commec=1.0.5",
+    "channels": ["ibbis", "conda-forge", "bioconda"],
+    "install": "conda install -c ibbis -c conda-forge -c bioconda commec=1.0.5",
     "python": ">=3.10",
     "candidate": {
       "version": "2.1.0.dev1",

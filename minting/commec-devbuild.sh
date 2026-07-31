@@ -117,7 +117,8 @@ echo " commec $DEVVER built. Serving channel at http://$IP:$PORT/"
 echo
 echo " On the devel box, set /etc/commec-box/update.conf:"
 echo "   channel=devel"
-echo "   conda_channels=http://$IP:$PORT,conda-forge,bioconda"
+echo "   commec_primary_channel=http://$IP:$PORT"
+echo "   conda_channels=http://$IP:$PORT,ibbis,conda-forge,bioconda"
 echo "   probe_url=http://$IP:$PORT/noarch/repodata.json"
 echo
 echo " Then the updater will prompt for $DEVVER. Bump devN + re-run to re-trigger."

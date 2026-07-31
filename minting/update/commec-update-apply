@@ -17,7 +17,7 @@ SCREEN_GUARD="${COMMEC_SCREEN_GUARD:-/usr/local/lib/commec-box/commec-screen-sta
 exec >>"$LOG" 2>&1
 echo "=== commec-update-apply $(date -u +%FT%TZ) arg='${1:-}' ==="
 
-conda_channels="conda-forge,bioconda"; channel="stable"; db_dir="/home/commec-user/commec-dbs"
+conda_channels="ibbis,conda-forge,bioconda"; channel="stable"; db_dir="/home/commec-user/commec-dbs"
 db_user=commec-user; gui_url="https://127.0.0.1/status"
 [ -r "$CONF" ] && . "$CONF"
 

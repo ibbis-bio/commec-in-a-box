@@ -6,7 +6,7 @@ set -euxo pipefail
 CONDA=/opt/miniconda/bin/conda
 COMMEC_VERSION="${COMMEC_VERSION:-1.0.5}"
 
-# Create env with commec pinned, using ONLY conda-forge + bioconda. Newer conda gates
+# Create env with commec pinned, using ONLY IBBIS + conda-forge + bioconda. Newer conda gates
 # the Anaconda default channels (pkgs/main, pkgs/r) behind a Terms-of-Service accept;
 # we don't use them, so drop 'defaults' and --override-channels. Accept ToS too as
 # belt-and-suspenders (harmless, local-only).
@@ -18,9 +18,11 @@ $CONDA tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 # 2.1.0.dev1 version prevents a downgrade to 2.0.x while remaining older than final 2.1.0.
 if [ "${COMMEC_SOURCE:-stable}" = "gui" ]; then
   $CONDA create -y -n commec-env --override-channels \
-    -c "file:///tmp/devchannel" -c conda-forge -c bioconda "commec=${COMMEC_GUI_VERSION:-2.1.0.dev1}"
+    -c "file:///tmp/devchannel" -c ibbis -c conda-forge -c bioconda \
+    "commec=${COMMEC_GUI_VERSION:-2.1.0.dev1}"
 else
-  $CONDA create -y -n commec-env --override-channels -c conda-forge -c bioconda "commec=${COMMEC_VERSION}"
+  $CONDA create -y -n commec-env --override-channels \
+    -c ibbis -c conda-forge -c bioconda "commec=${COMMEC_VERSION}"
 fi
 
 # Explicit lockfile (exact package URLs) for reproducibility; pulled back by Packer

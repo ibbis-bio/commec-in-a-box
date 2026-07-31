@@ -25,7 +25,7 @@ minting/
 - Debian 13 genericcloud qcow2, build 20260615-2510
 - Miniconda py312_26.3.2-2
 - commec 2.1.0.dev1 candidate from the exact pinned GUI commit, with the runtime
-  updater pointed at the production conda-forge + bioconda channels
+  updater tracking IBBIS first and retaining conda-forge + bioconda for dependencies
 - commec databases from the stable R2 manifest: biorisk, low_concern,
   control_lists, and best_match
 - Packer 1.15.4
